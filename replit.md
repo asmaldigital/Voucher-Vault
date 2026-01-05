@@ -1,12 +1,13 @@
 # SuperSave Voucher Management System
 
 ## Overview
-A voucher management system for SuperSave, a South African supermarket. The system tracks R50 paper vouchers with unique barcodes, allowing staff to scan and instantly mark vouchers as redeemed. Built with React, Tailwind CSS, and Supabase for backend and authentication.
+A voucher management system for SuperSave, a South African supermarket. The system tracks R50 paper vouchers with unique barcodes, allowing staff to scan and instantly mark vouchers as redeemed. Built with React, Tailwind CSS, Express backend, and Replit's built-in PostgreSQL database.
 
 ## Tech Stack
 - **Frontend**: React 18 with TypeScript, Tailwind CSS, shadcn/ui components
-- **Backend**: Supabase (PostgreSQL database with Row Level Security)
-- **Authentication**: Supabase Auth (email/password)
+- **Backend**: Express.js with session-based authentication
+- **Database**: Replit's built-in PostgreSQL with Drizzle ORM
+- **Authentication**: Session-based auth with bcryptjs password hashing
 - **State Management**: TanStack Query for data fetching
 - **Routing**: Wouter
 
@@ -20,7 +21,6 @@ A voucher management system for SuperSave, a South African supermarket. The syst
 │   │   │   ├── app-sidebar.tsx
 │   │   │   └── protected-route.tsx
 │   │   ├── lib/
-│   │   │   ├── supabase.ts   # Supabase client initialization
 │   │   │   ├── auth-context.tsx # Auth state management
 │   │   │   └── queryClient.ts
 │   │   ├── pages/
@@ -33,64 +33,79 @@ A voucher management system for SuperSave, a South African supermarket. The syst
 │   │   │   └── users.tsx     # User management (admin only)
 │   │   └── App.tsx
 ├── server/
-│   ├── routes.ts             # API endpoint for config
+│   ├── routes.ts             # API endpoints
+│   ├── storage.ts            # Database storage layer
+│   ├── db.ts                 # Drizzle database connection
 │   └── index.ts
 ├── shared/
-│   └── schema.ts             # TypeScript types and Zod schemas
-└── supabase-setup.sql        # SQL to create tables in Supabase
+│   └── schema.ts             # Drizzle schema, TypeScript types, and Zod schemas
+└── drizzle.config.ts         # Drizzle configuration
 ```
 
-## Database Schema
+## Database Schema (Drizzle ORM)
+
+### users table
+- `id` (UUID, primary key)
+- `email` (unique string)
+- `password` (hashed string)
+- `role` (enum: 'admin', 'editor')
+- `createdAt` (timestamp)
+- `createdBy` (user id, nullable)
 
 ### vouchers table
 - `id` (UUID, primary key)
 - `barcode` (unique string)
 - `value` (integer, default 50)
 - `status` (enum: 'available', 'redeemed', 'expired', 'voided')
-- `batch_number` (string)
-- `created_at` (timestamp)
-- `redeemed_at` (timestamp, nullable)
-- `redeemed_by` (user id, nullable)
-- `redeemed_by_email` (string, nullable)
+- `batchNumber` (string)
+- `createdAt` (timestamp)
+- `redeemedAt` (timestamp, nullable)
+- `redeemedBy` (user id, nullable)
+- `redeemedByEmail` (string, nullable)
 
-### audit_log table
+### auditLogs table
 - `id` (UUID, primary key)
 - `action` (string: 'created', 'redeemed', 'voided', 'expired', 'imported')
-- `voucher_id` (reference to vouchers)
-- `user_id` (who performed the action)
+- `voucherId` (reference to vouchers)
+- `userId` (who performed the action)
+- `userEmail` (email of who performed the action)
 - `timestamp` (timestamp)
 - `details` (JSONB for extra info)
 
-### user_profiles table
-- `id` (UUID, primary key, references auth.users)
-- `email` (string)
-- `role` (enum: 'admin', 'editor')
-- `created_at` (timestamp)
-- `created_by` (user id, nullable)
-
 ## Setup Instructions
 
-### 1. Supabase Configuration
-1. Create a new Supabase project
-2. Go to SQL Editor and run the contents of `supabase-setup.sql`
-3. Enable Email Auth in Authentication > Providers
-4. Create test users in Authentication > Users
+### 1. Database Setup
+The database is automatically configured through Replit's built-in PostgreSQL. Run:
+```bash
+npm run db:push
+```
 
 ### 2. Environment Variables
-The following secrets are required:
-- `SUPABASE_URL`: Your Supabase project URL
-- `SUPABASE_ANON_KEY`: Your Supabase anon/public key
-- `SUPABASE_SERVICE_ROLE_KEY`: Your Supabase service role key (for admin user creation)
+- `DATABASE_URL`: Automatically set by Replit
+- `SESSION_SECRET`: Used for session encryption (defaults to generated value)
 
-### 3. Running the App
+### 3. Initial Admin User
+After starting the app for the first time, create an admin user via the setup endpoint:
+```bash
+curl -X POST http://localhost:5000/api/setup \
+  -H "Content-Type: application/json" \
+  -d '{"email": "admin@supersave.co.za", "password": "admin123", "role": "admin"}'
+```
+
+### 4. Running the App
 ```bash
 npm run dev
 ```
+
+## Default Admin Credentials
+- Email: admin@supersave.co.za
+- Password: admin123
 
 ## Key Features
 
 ### 1. Login (Protected Access)
 - Email/password authentication
+- Session-based auth with secure cookies
 - All pages require login
 - User email displayed in header
 - Logout functionality
@@ -135,46 +150,56 @@ npm run dev
 - Role-based sidebar (Users menu only visible to admins)
 
 ## Design System
-- Primary color: Green (SuperSave branding)
+- Primary color: Lime Green (SuperSave branding - HSL: 80 61% 50%)
+- Secondary color: Red (HSL: 0 100% 50%)
 - Font: Roboto (sans) and Roboto Mono (for barcodes/values)
 - Mobile-first responsive design
 - Large touch targets for scanning
 
 ## Security
-- Row Level Security on all Supabase tables
+- Session-based authentication with secure httpOnly cookies
+- Password hashing with bcryptjs (10 salt rounds)
 - Only authenticated users can access data
-- All actions logged to audit_log
-- No API keys exposed in frontend code
-- RLS policy restricts voucher updates: only `available` status can transition to `redeemed`
-- Prevents double-redemption and status tampering at database level
+- All actions logged to audit_logs
 - Role-based access control: Admin and Editor roles
-- User management endpoints enforce admin-only access at both API and RLS levels
+- User management endpoints enforce admin-only access
 - Admin users can void vouchers; editors cannot
 
 ## User Roles
 - **Admin**: Full access including user management, voiding vouchers
 - **Editor**: Standard access for scanning, redeeming, importing, and viewing reports
 
-## Architecture Notes
+## API Endpoints
 
-### Supabase Initialization Pattern
-The Supabase client is initialized asynchronously because credentials are fetched from `/api/config`. To prevent race conditions:
+### Authentication
+- `POST /api/auth/login` - Login with email/password
+- `POST /api/auth/logout` - Logout and clear session
+- `GET /api/auth/me` - Get current user info
 
-1. `initSupabase()` returns a Promise that resolves to the Supabase client
-2. `AuthProvider` calls `initSupabase()` on mount and stores the client in state
-3. `useSupabase()` hook returns `{ supabase, isReady }` for async-safe access
-4. All React Query hooks use `enabled: isReady` to wait for initialization
+### Users (Admin only)
+- `GET /api/users` - List all users
+- `POST /api/users` - Create new user
 
-This pattern ensures no database queries are made before the Supabase client is ready.
+### Vouchers
+- `GET /api/vouchers` - List vouchers with filters
+- `GET /api/vouchers/:barcode` - Get voucher by barcode
+- `POST /api/vouchers/redeem` - Redeem a voucher
+- `POST /api/vouchers/import` - Bulk import vouchers
+- `POST /api/vouchers/:id/void` - Void a voucher (Admin only)
 
-### Recent Changes (January 2026)
-- Fixed critical race condition in Supabase client initialization
-- Strengthened RLS policies to only allow `available` → `redeemed` transitions
-- Added `useSupabase()` hook with `isReady` flag for async-safe data access
-- All page components now properly wait for Supabase before querying
-- Added multi-level user roles system (Admin/Editor)
-- Created user_profiles table with RLS policies for admin-only management
-- Added backend API endpoints for creating and listing users
-- Auth context now exposes userRole and isAdmin flags
-- Created admin-only Users management page
-- Sidebar dynamically shows/hides admin-only menu items based on role
+### Dashboard & Reports
+- `GET /api/dashboard/stats` - Dashboard statistics
+- `GET /api/reports` - Audit logs with date range filter
+
+### Setup
+- `POST /api/setup` - Create initial admin user (only works when no users exist)
+
+## Recent Changes (January 2026)
+- Migrated from Supabase to Replit's built-in PostgreSQL database
+- Implemented Drizzle ORM for type-safe database operations
+- Switched to session-based authentication with express-session
+- Added bcryptjs for secure password hashing
+- Created DatabaseStorage class with full CRUD operations
+- Updated all frontend pages to use new API endpoints
+- Added setup endpoint for creating initial admin user
+- Removed all Supabase dependencies and configuration

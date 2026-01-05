@@ -3,13 +3,13 @@ import { useLocation } from 'wouter';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { useAuth, useSupabase } from '@/lib/auth-context';
+import { useAuth } from '@/lib/auth-context';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { useToast } from '@/hooks/use-toast';
-import { Loader2, Eye, EyeOff, ShieldCheck, AlertCircle } from 'lucide-react';
+import { Loader2, Eye, EyeOff, ShieldCheck } from 'lucide-react';
 import logoPng from "@assets/supersave-logo_1767626702003.png";
 
 const loginSchema = z.object({
@@ -22,7 +22,6 @@ type LoginFormData = z.infer<typeof loginSchema>;
 export default function LoginPage() {
   const [, setLocation] = useLocation();
   const { signIn, loading: authLoading } = useAuth();
-  const { isReady, error: initError } = useSupabase();
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
@@ -36,15 +35,6 @@ export default function LoginPage() {
   });
 
   const onSubmit = async (data: LoginFormData) => {
-    if (!isReady) {
-      toast({
-        variant: 'destructive',
-        title: 'System Loading',
-        description: 'Please wait for the system to finish loading and try again.',
-      });
-      return;
-    }
-    
     setIsLoading(true);
     try {
       const { error } = await signIn(data.email, data.password);
@@ -72,8 +62,6 @@ export default function LoginPage() {
     }
   };
 
-  const isSystemLoading = authLoading || !isReady;
-
   return (
     <div className="flex min-h-screen flex-col items-center justify-center bg-background p-4">
       <div className="w-full max-w-md space-y-8">
@@ -84,20 +72,6 @@ export default function LoginPage() {
             <p className="text-muted-foreground">Voucher Management System</p>
           </div>
         </div>
-
-        {initError && (
-          <Card className="border-destructive">
-            <CardContent className="flex items-center gap-3 pt-6">
-              <AlertCircle className="h-5 w-5 text-destructive" />
-              <div>
-                <p className="font-medium text-destructive">Connection Error</p>
-                <p className="text-sm text-muted-foreground">
-                  {initError}. Please refresh the page to try again.
-                </p>
-              </div>
-            </CardContent>
-          </Card>
-        )}
 
         <Card>
           <CardHeader className="space-y-1">
@@ -120,7 +94,7 @@ export default function LoginPage() {
                           type="email"
                           placeholder="staff@supersave.co.za"
                           autoComplete="email"
-                          disabled={isSystemLoading}
+                          disabled={authLoading}
                           data-testid="input-email"
                           {...field}
                         />
@@ -142,7 +116,7 @@ export default function LoginPage() {
                             type={showPassword ? 'text' : 'password'}
                             placeholder="Enter your password"
                             autoComplete="current-password"
-                            disabled={isSystemLoading}
+                            disabled={authLoading}
                             data-testid="input-password"
                             {...field}
                           />
@@ -170,10 +144,10 @@ export default function LoginPage() {
                 <Button
                   type="submit"
                   className="h-12 w-full text-base"
-                  disabled={isLoading || isSystemLoading || !!initError}
+                  disabled={isLoading || authLoading}
                   data-testid="button-login"
                 >
-                  {isSystemLoading ? (
+                  {authLoading ? (
                     <>
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                       Loading...
@@ -194,7 +168,7 @@ export default function LoginPage() {
 
         <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground">
           <ShieldCheck className="h-4 w-4" />
-          <span>Secure authentication powered by Supabase</span>
+          <span>Secure authentication</span>
         </div>
       </div>
     </div>

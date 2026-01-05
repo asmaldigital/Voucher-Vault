@@ -1,5 +1,4 @@
 import { useQuery } from '@tanstack/react-query';
-import { useSupabase } from '@/lib/auth-context';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Badge } from '@/components/ui/badge';
@@ -70,44 +69,8 @@ function StatCardSkeleton() {
 }
 
 export default function DashboardPage() {
-  const { supabase, isReady } = useSupabase();
-
   const { data: stats, isLoading, error } = useQuery<DashboardStats>({
     queryKey: ['/api/dashboard/stats'],
-    queryFn: async () => {
-      if (!supabase) throw new Error('Supabase not initialized');
-      
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      const todayIso = today.toISOString();
-
-      const [
-        { count: totalCount },
-        { count: availableCount },
-        { count: redeemedTodayCount },
-        { count: redeemedTotalCount },
-        { data: valueData },
-      ] = await Promise.all([
-        supabase.from('vouchers').select('*', { count: 'exact', head: true }),
-        supabase.from('vouchers').select('*', { count: 'exact', head: true }).eq('status', 'available'),
-        supabase.from('vouchers').select('*', { count: 'exact', head: true }).eq('status', 'redeemed').gte('redeemed_at', todayIso),
-        supabase.from('vouchers').select('*', { count: 'exact', head: true }).eq('status', 'redeemed'),
-        supabase.from('vouchers').select('value, status'),
-      ]);
-
-      const totalValue = valueData?.reduce((sum, v) => sum + (v.value || 50), 0) ?? 0;
-      const redeemedValue = valueData?.filter(v => v.status === 'redeemed').reduce((sum, v) => sum + (v.value || 50), 0) ?? 0;
-
-      return {
-        totalVouchers: totalCount ?? 0,
-        availableVouchers: availableCount ?? 0,
-        redeemedToday: redeemedTodayCount ?? 0,
-        redeemedTotal: redeemedTotalCount ?? 0,
-        totalValue,
-        redeemedValue,
-      };
-    },
-    enabled: isReady,
     refetchInterval: 30000,
   });
 
@@ -115,7 +78,7 @@ export default function DashboardPage() {
     return `R${value.toLocaleString('en-ZA')}`;
   };
 
-  if (!isReady || isLoading) {
+  if (isLoading) {
     return (
       <div className="flex flex-col gap-6 p-6">
         <div className="flex flex-col gap-2">

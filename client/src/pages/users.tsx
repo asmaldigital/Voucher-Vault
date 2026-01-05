@@ -11,39 +11,42 @@ import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { useToast } from '@/hooks/use-toast';
 import { UserPlus, Users, Shield, Edit } from 'lucide-react';
-import type { UserProfile, CreateUser } from '@shared/schema';
+import type { User, CreateUser } from '@shared/schema';
 import { Redirect } from 'wouter';
 
+interface UserListItem {
+  id: string;
+  email: string;
+  role: string;
+  created_at: string;
+}
+
 export default function UsersPage() {
-  const { session, isAdmin, loading } = useAuth();
+  const { isAdmin, loading } = useAuth();
   const { toast } = useToast();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [role, setRole] = useState<'admin' | 'editor'>('editor');
 
-  const { data: users = [], isLoading: usersLoading } = useQuery<UserProfile[]>({
+  const { data: users = [], isLoading: usersLoading } = useQuery<UserListItem[]>({
     queryKey: ['/api/users'],
     queryFn: async () => {
       const response = await fetch('/api/users', {
-        headers: {
-          Authorization: `Bearer ${session?.access_token}`,
-        },
+        credentials: 'include',
       });
       if (!response.ok) throw new Error('Failed to fetch users');
       return response.json();
     },
-    enabled: !!session?.access_token && isAdmin,
+    enabled: isAdmin,
   });
 
   const createUserMutation = useMutation({
     mutationFn: async (userData: CreateUser) => {
       const response = await fetch('/api/users', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${session?.access_token}`,
-        },
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify(userData),
       });
       

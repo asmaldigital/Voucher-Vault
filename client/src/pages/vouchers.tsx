@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { useSupabase } from '@/lib/auth-context';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -38,42 +37,27 @@ export default function VouchersPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [page, setPage] = useState(0);
-  const { supabase, isReady } = useSupabase();
 
-  const { data, isLoading, error } = useQuery({
+  const { data, isLoading, error } = useQuery<{ vouchers: Voucher[]; total: number }>({
     queryKey: ['/api/vouchers', statusFilter, searchQuery, page],
     queryFn: async () => {
-      if (!supabase) throw new Error('Supabase not initialized');
-      
-      let query = supabase
-        .from('vouchers')
-        .select('*', { count: 'exact' })
-        .order('created_at', { ascending: false })
-        .range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1);
+      const params = new URLSearchParams();
+      if (statusFilter !== 'all') params.set('status', statusFilter);
+      if (searchQuery.trim()) params.set('search', searchQuery);
+      params.set('limit', PAGE_SIZE.toString());
+      params.set('offset', (page * PAGE_SIZE).toString());
 
-      if (statusFilter !== 'all') {
-        query = query.eq('status', statusFilter);
-      }
-
-      if (searchQuery.trim()) {
-        query = query.or(`barcode.ilike.%${searchQuery}%,batch_number.ilike.%${searchQuery}%`);
-      }
-
-      const { data: vouchers, error, count } = await query;
-
-      if (error) throw error;
-
-      return {
-        vouchers: vouchers as Voucher[],
-        totalCount: count ?? 0,
-      };
+      const response = await fetch(`/api/vouchers?${params}`, {
+        credentials: 'include',
+      });
+      if (!response.ok) throw new Error('Failed to fetch vouchers');
+      return response.json();
     },
-    enabled: isReady,
   });
 
-  const totalPages = Math.ceil((data?.totalCount ?? 0) / PAGE_SIZE);
+  const totalPages = Math.ceil((data?.total ?? 0) / PAGE_SIZE);
 
-  const formatDate = (dateString?: string | null) => {
+  const formatDate = (dateString?: string | Date | null) => {
     if (!dateString) return '-';
     return new Date(dateString).toLocaleDateString('en-ZA', {
       day: '2-digit',
@@ -82,7 +66,7 @@ export default function VouchersPage() {
     });
   };
 
-  const formatDateTime = (dateString?: string | null) => {
+  const formatDateTime = (dateString?: string | Date | null) => {
     if (!dateString) return '-';
     return new Date(dateString).toLocaleString('en-ZA', {
       dateStyle: 'short',
@@ -106,7 +90,7 @@ export default function VouchersPage() {
             Voucher List
           </CardTitle>
           <CardDescription>
-            {data?.totalCount ?? 0} vouchers found
+            {data?.total ?? 0} vouchers found
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -147,7 +131,7 @@ export default function VouchersPage() {
             </div>
           </div>
 
-          {!isReady || isLoading ? (
+          {isLoading ? (
             <div className="space-y-3">
               {Array.from({ length: 5 }).map((_, i) => (
                 <Skeleton key={i} className="h-12 w-full" />
@@ -191,11 +175,11 @@ export default function VouchersPage() {
                             {voucher.status}
                           </Badge>
                         </TableCell>
-                        <TableCell>{voucher.batch_number}</TableCell>
-                        <TableCell>{formatDate(voucher.created_at)}</TableCell>
-                        <TableCell>{formatDateTime(voucher.redeemed_at)}</TableCell>
+                        <TableCell>{voucher.batchNumber}</TableCell>
+                        <TableCell>{formatDate(voucher.createdAt)}</TableCell>
+                        <TableCell>{formatDateTime(voucher.redeemedAt)}</TableCell>
                         <TableCell className="max-w-[150px] truncate">
-                          {voucher.redeemed_by_email || voucher.redeemed_by || '-'}
+                          {voucher.redeemedByEmail || voucher.redeemedBy || '-'}
                         </TableCell>
                       </TableRow>
                     ))}
@@ -207,8 +191,8 @@ export default function VouchersPage() {
               <div className="flex items-center justify-between gap-4">
                 <p className="text-sm text-muted-foreground">
                   Showing {page * PAGE_SIZE + 1} -{' '}
-                  {Math.min((page + 1) * PAGE_SIZE, data?.totalCount ?? 0)} of{' '}
-                  {data?.totalCount ?? 0}
+                  {Math.min((page + 1) * PAGE_SIZE, data?.total ?? 0)} of{' '}
+                  {data?.total ?? 0}
                 </p>
                 <div className="flex items-center gap-2">
                   <Button

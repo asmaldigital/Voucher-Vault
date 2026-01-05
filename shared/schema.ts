@@ -1,66 +1,127 @@
+import { pgTable, text, integer, timestamp, uuid, jsonb } from "drizzle-orm/pg-core";
+import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
+import { relations } from "drizzle-orm";
 
-// Voucher status enum
-export const VoucherStatus = {
-  AVAILABLE: 'available',
-  REDEEMED: 'redeemed',
-  EXPIRED: 'expired',
-  VOIDED: 'voided'
-} as const;
-
-export type VoucherStatusType = typeof VoucherStatus[keyof typeof VoucherStatus];
-
-// Voucher schema
-export const voucherSchema = z.object({
-  id: z.string().uuid(),
-  barcode: z.string().min(1),
-  value: z.number().default(50),
-  status: z.enum(['available', 'redeemed', 'expired', 'voided']),
-  batch_number: z.string(),
-  created_at: z.string(),
-  redeemed_at: z.string().nullable(),
-  redeemed_by: z.string().nullable(),
-  redeemed_by_email: z.string().nullable().optional()
+// Users table for authentication
+export const users = pgTable("users", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  email: text("email").notNull().unique(),
+  password: text("password").notNull(),
+  role: text("role").notNull().default("editor"),
+  createdAt: timestamp("created_at").defaultNow(),
+  createdBy: uuid("created_by"),
 });
 
-export type Voucher = z.infer<typeof voucherSchema>;
+export const usersRelations = relations(users, ({ many }) => ({
+  vouchers: many(vouchers),
+  auditLogs: many(auditLogs),
+}));
 
-export const insertVoucherSchema = z.object({
-  barcode: z.string().min(1, "Barcode is required"),
-  value: z.number().default(50),
-  status: z.enum(['available', 'redeemed', 'expired', 'voided']).default('available'),
-  batch_number: z.string().min(1, "Batch number is required")
+export const insertUserSchema = createInsertSchema(users).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertUser = z.infer<typeof insertUserSchema>;
+export type User = typeof users.$inferSelect;
+
+// Vouchers table
+export const vouchers = pgTable("vouchers", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  barcode: text("barcode").notNull().unique(),
+  value: integer("value").notNull().default(50),
+  status: text("status").notNull().default("available"),
+  batchNumber: text("batch_number").notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+  redeemedAt: timestamp("redeemed_at"),
+  redeemedBy: uuid("redeemed_by").references(() => users.id),
+  redeemedByEmail: text("redeemed_by_email"),
+});
+
+export const vouchersRelations = relations(vouchers, ({ one }) => ({
+  redeemedByUser: one(users, {
+    fields: [vouchers.redeemedBy],
+    references: [users.id],
+  }),
+}));
+
+export const insertVoucherSchema = createInsertSchema(vouchers).omit({
+  id: true,
+  createdAt: true,
+  redeemedAt: true,
+  redeemedBy: true,
+  redeemedByEmail: true,
 });
 
 export type InsertVoucher = z.infer<typeof insertVoucherSchema>;
+export type Voucher = typeof vouchers.$inferSelect;
 
-// Audit log schema
-export const auditActionSchema = z.enum(['created', 'redeemed', 'voided', 'expired', 'imported']);
-
-export type AuditAction = z.infer<typeof auditActionSchema>;
-
-export const auditLogSchema = z.object({
-  id: z.string().uuid(),
-  action: auditActionSchema,
-  voucher_id: z.string().uuid().nullable(),
-  user_id: z.string(),
-  user_email: z.string().optional(),
-  timestamp: z.string(),
-  details: z.record(z.any()).nullable()
+// Audit logs table
+export const auditLogs = pgTable("audit_logs", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  action: text("action").notNull(),
+  voucherId: uuid("voucher_id").references(() => vouchers.id),
+  userId: uuid("user_id").references(() => users.id),
+  userEmail: text("user_email"),
+  timestamp: timestamp("timestamp").defaultNow(),
+  details: jsonb("details"),
 });
 
-export type AuditLog = z.infer<typeof auditLogSchema>;
+export const auditLogsRelations = relations(auditLogs, ({ one }) => ({
+  voucher: one(vouchers, {
+    fields: [auditLogs.voucherId],
+    references: [vouchers.id],
+  }),
+  user: one(users, {
+    fields: [auditLogs.userId],
+    references: [users.id],
+  }),
+}));
 
-export const insertAuditLogSchema = z.object({
-  action: auditActionSchema,
-  voucher_id: z.string().uuid().nullable(),
-  user_id: z.string(),
-  details: z.record(z.any()).nullable().optional()
+export const insertAuditLogSchema = createInsertSchema(auditLogs).omit({
+  id: true,
+  timestamp: true,
 });
 
 export type InsertAuditLog = z.infer<typeof insertAuditLogSchema>;
+export type AuditLog = typeof auditLogs.$inferSelect;
 
-// Dashboard stats
+// Zod schemas for validation
+export const createUserSchema = z.object({
+  email: z.string().email("Please enter a valid email address"),
+  password: z.string().min(6, "Password must be at least 6 characters"),
+  role: z.enum(["admin", "editor"]).default("editor"),
+});
+
+export type CreateUser = z.infer<typeof createUserSchema>;
+
+export const loginSchema = z.object({
+  email: z.string().email("Please enter a valid email address"),
+  password: z.string().min(1, "Password is required"),
+});
+
+export type LoginCredentials = z.infer<typeof loginSchema>;
+
+// Voucher status enum
+export const VoucherStatus = {
+  AVAILABLE: "available",
+  REDEEMED: "redeemed",
+  EXPIRED: "expired",
+  VOIDED: "voided",
+} as const;
+
+export type VoucherStatusType = (typeof VoucherStatus)[keyof typeof VoucherStatus];
+
+// User roles
+export const UserRole = {
+  ADMIN: "admin",
+  EDITOR: "editor",
+} as const;
+
+export type UserRoleType = (typeof UserRole)[keyof typeof UserRole];
+
+// Dashboard stats interface
 export interface DashboardStats {
   totalVouchers: number;
   availableVouchers: number;
@@ -70,14 +131,14 @@ export interface DashboardStats {
   redeemedValue: number;
 }
 
-// Import result
+// Import result interface
 export interface ImportResult {
   success: number;
   failed: number;
   errors: string[];
 }
 
-// Redemption result
+// Redemption result interface
 export interface RedemptionResult {
   success: boolean;
   message: string;
@@ -85,30 +146,3 @@ export interface RedemptionResult {
   redeemedBy?: string;
   redeemedAt?: string;
 }
-
-// User roles
-export const UserRole = {
-  ADMIN: 'admin',
-  EDITOR: 'editor'
-} as const;
-
-export type UserRoleType = typeof UserRole[keyof typeof UserRole];
-
-// User profile schema
-export const userProfileSchema = z.object({
-  id: z.string().uuid(),
-  email: z.string().email(),
-  role: z.enum(['admin', 'editor']),
-  created_at: z.string(),
-  created_by: z.string().uuid().nullable()
-});
-
-export type UserProfile = z.infer<typeof userProfileSchema>;
-
-export const createUserSchema = z.object({
-  email: z.string().email("Please enter a valid email address"),
-  password: z.string().min(6, "Password must be at least 6 characters"),
-  role: z.enum(['admin', 'editor']).default('editor')
-});
-
-export type CreateUser = z.infer<typeof createUserSchema>;

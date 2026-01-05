@@ -1,6 +1,6 @@
 import { useState, useRef } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { useAuth, useSupabase } from '@/lib/auth-context';
+import { useAuth } from '@/lib/auth-context';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -25,8 +25,6 @@ export default function ImportPage() {
   const [progress, setProgress] = useState(0);
   const [result, setResult] = useState<ImportResult | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const { user } = useAuth();
-  const { supabase } = useSupabase();
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
@@ -93,10 +91,6 @@ export default function ImportPage() {
         throw new Error('Please provide both a file and batch number');
       }
 
-      if (!supabase) {
-        throw new Error('System not ready. Please try again.');
-      }
-
       const content = await file.text();
       const barcodes = parseCSV(content);
 
@@ -105,70 +99,26 @@ export default function ImportPage() {
       }
 
       const value = parseInt(voucherValue) || 50;
-      const results: ImportResult = { success: 0, failed: 0, errors: [] };
-      const batchSize = 50;
+      setProgress(50);
 
-      for (let i = 0; i < barcodes.length; i += batchSize) {
-        const batch = barcodes.slice(i, i + batchSize);
-        const vouchers = batch.map((barcode) => ({
-          barcode,
+      const response = await fetch('/api/vouchers/import', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          barcodes,
+          batchNumber: batchNumber.trim(),
           value,
-          status: 'available' as const,
-          batch_number: batchNumber.trim(),
-        }));
+        }),
+      });
 
-        const { data, error } = await supabase
-          .from('vouchers')
-          .insert(vouchers)
-          .select();
-
-        if (error) {
-          if (error.code === '23505') {
-            for (const barcode of batch) {
-              const { error: singleError } = await supabase
-                .from('vouchers')
-                .insert({
-                  barcode,
-                  value,
-                  status: 'available',
-                  batch_number: batchNumber.trim(),
-                });
-
-              if (singleError) {
-                results.failed++;
-                if (results.errors.length < 10) {
-                  results.errors.push(`Barcode ${barcode}: ${singleError.message}`);
-                }
-              } else {
-                results.success++;
-              }
-            }
-          } else {
-            results.failed += batch.length;
-            results.errors.push(error.message);
-          }
-        } else {
-          results.success += data?.length ?? batch.length;
-        }
-
-        setProgress(Math.round(((i + batchSize) / barcodes.length) * 100));
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || 'Import failed');
       }
 
-      if (results.success > 0) {
-        await supabase.from('audit_log').insert({
-          action: 'imported',
-          voucher_id: null,
-          user_id: user?.id,
-          details: {
-            batch_number: batchNumber.trim(),
-            total_imported: results.success,
-            total_failed: results.failed,
-            file_name: file.name,
-          },
-        });
-      }
-
-      return results;
+      setProgress(100);
+      return response.json();
     },
     onSuccess: (data) => {
       setResult(data);
@@ -185,6 +135,7 @@ export default function ImportPage() {
     },
     onError: (error: Error) => {
       setImporting(false);
+      setResult({ success: 0, failed: 0, errors: [error.message] });
       toast({
         variant: 'destructive',
         title: 'Import failed',

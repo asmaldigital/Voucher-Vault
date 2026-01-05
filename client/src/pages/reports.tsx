@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { useSupabase } from '@/lib/auth-context';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -24,48 +23,38 @@ import {
   Banknote,
   Ticket,
 } from 'lucide-react';
-import { format, startOfDay, endOfDay, subDays } from 'date-fns';
-import type { Voucher } from '@shared/schema';
+import { format, subDays } from 'date-fns';
+import type { AuditLog } from '@shared/schema';
 
 export default function ReportsPage() {
   const [dateRange, setDateRange] = useState<{ from: Date; to: Date }>({
     from: subDays(new Date(), 7),
     to: new Date(),
   });
-  const { supabase, isReady } = useSupabase();
 
-  const { data, isLoading, error } = useQuery({
+  const { data, isLoading, error } = useQuery<AuditLog[]>({
     queryKey: ['/api/reports', dateRange.from.toISOString(), dateRange.to.toISOString()],
     queryFn: async () => {
-      if (!supabase) throw new Error('Supabase not initialized');
-      
-      const fromDate = startOfDay(dateRange.from).toISOString();
-      const toDate = endOfDay(dateRange.to).toISOString();
+      const params = new URLSearchParams();
+      params.set('startDate', dateRange.from.toISOString());
+      params.set('endDate', dateRange.to.toISOString());
 
-      const { data: redemptions, error } = await supabase
-        .from('vouchers')
-        .select('*')
-        .eq('status', 'redeemed')
-        .gte('redeemed_at', fromDate)
-        .lte('redeemed_at', toDate)
-        .order('redeemed_at', { ascending: false });
-
-      if (error) throw error;
-
-      const totalValue = redemptions?.reduce((sum, v) => sum + (v.value || 50), 0) ?? 0;
-      const uniqueUsers = new Set(redemptions?.map((v) => v.redeemed_by)).size;
-
-      return {
-        redemptions: redemptions as Voucher[],
-        totalCount: redemptions?.length ?? 0,
-        totalValue,
-        uniqueUsers,
-      };
+      const response = await fetch(`/api/reports?${params}`, {
+        credentials: 'include',
+      });
+      if (!response.ok) throw new Error('Failed to fetch reports');
+      return response.json();
     },
-    enabled: isReady,
   });
 
-  const formatDate = (dateString?: string | null) => {
+  const redemptions = data?.filter((log) => log.action === 'redeemed') ?? [];
+  const totalValue = redemptions.reduce((sum, log) => {
+    const details = log.details as { value?: number } | null;
+    return sum + (details?.value || 50);
+  }, 0);
+  const uniqueUsers = new Set(redemptions.map((log) => log.userId)).size;
+
+  const formatDate = (dateString?: string | Date | null) => {
     if (!dateString) return '-';
     return new Date(dateString).toLocaleDateString('en-ZA', {
       day: '2-digit',
@@ -74,7 +63,7 @@ export default function ReportsPage() {
     });
   };
 
-  const formatTime = (dateString?: string | null) => {
+  const formatTime = (dateString?: string | Date | null) => {
     if (!dateString) return '-';
     return new Date(dateString).toLocaleTimeString('en-ZA', {
       hour: '2-digit',
@@ -83,15 +72,15 @@ export default function ReportsPage() {
   };
 
   const exportToCSV = () => {
-    if (!data?.redemptions.length) return;
+    if (!redemptions.length) return;
 
-    const headers = ['Barcode', 'Value', 'Batch', 'Redeemed At', 'Redeemed By'];
-    const rows = data.redemptions.map((v) => [
-      v.barcode,
-      `R${v.value}`,
-      v.batch_number,
-      v.redeemed_at ? new Date(v.redeemed_at).toLocaleString('en-ZA') : '',
-      v.redeemed_by_email || v.redeemed_by || '',
+    const headers = ['Action', 'User', 'Date', 'Time', 'Details'];
+    const rows = redemptions.map((log) => [
+      log.action,
+      log.userEmail || log.userId || '',
+      log.timestamp ? new Date(log.timestamp).toLocaleDateString('en-ZA') : '',
+      log.timestamp ? new Date(log.timestamp).toLocaleTimeString('en-ZA') : '',
+      JSON.stringify(log.details || {}),
     ]);
 
     const csv = [headers.join(','), ...rows.map((r) => r.join(','))].join('\n');
@@ -153,7 +142,7 @@ export default function ReportsPage() {
         <Button
           variant="outline"
           onClick={exportToCSV}
-          disabled={!data?.redemptions.length}
+          disabled={!redemptions.length}
           data-testid="button-export"
         >
           <Download className="mr-2 h-4 w-4" />
@@ -162,7 +151,7 @@ export default function ReportsPage() {
       </div>
 
       <div className="grid gap-4 md:grid-cols-3">
-        {!isReady || isLoading ? (
+        {isLoading ? (
           <>
             {Array.from({ length: 3 }).map((_, i) => (
               <Card key={i}>
@@ -183,7 +172,7 @@ export default function ReportsPage() {
                   </div>
                   <div>
                     <p className="text-3xl font-bold" data-testid="stat-total-redemptions">
-                      {data?.totalCount ?? 0}
+                      {redemptions.length}
                     </p>
                     <p className="text-sm text-muted-foreground">Redemptions</p>
                   </div>
@@ -198,7 +187,7 @@ export default function ReportsPage() {
                   </div>
                   <div>
                     <p className="text-3xl font-bold" data-testid="stat-total-value">
-                      R{(data?.totalValue ?? 0).toLocaleString('en-ZA')}
+                      R{totalValue.toLocaleString('en-ZA')}
                     </p>
                     <p className="text-sm text-muted-foreground">Total Value</p>
                   </div>
@@ -213,7 +202,7 @@ export default function ReportsPage() {
                   </div>
                   <div>
                     <p className="text-3xl font-bold" data-testid="stat-unique-users">
-                      {data?.uniqueUsers ?? 0}
+                      {uniqueUsers}
                     </p>
                     <p className="text-sm text-muted-foreground">Staff Members</p>
                   </div>
@@ -235,7 +224,7 @@ export default function ReportsPage() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          {!isReady || isLoading ? (
+          {isLoading ? (
             <div className="space-y-3">
               {Array.from({ length: 5 }).map((_, i) => (
                 <Skeleton key={i} className="h-12 w-full" />
@@ -245,7 +234,7 @@ export default function ReportsPage() {
             <div className="py-8 text-center text-muted-foreground">
               Failed to load report data. Please try again.
             </div>
-          ) : data?.redemptions.length === 0 ? (
+          ) : redemptions.length === 0 ? (
             <div className="py-8 text-center text-muted-foreground">
               No redemptions found in the selected date range.
             </div>
@@ -254,28 +243,28 @@ export default function ReportsPage() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead className="sticky left-0 bg-background">Barcode</TableHead>
-                    <TableHead>Value</TableHead>
-                    <TableHead>Batch</TableHead>
+                    <TableHead className="sticky left-0 bg-background">Action</TableHead>
+                    <TableHead>User</TableHead>
                     <TableHead>Date</TableHead>
                     <TableHead>Time</TableHead>
-                    <TableHead>Redeemed By</TableHead>
+                    <TableHead>Value</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {data?.redemptions.map((voucher) => (
-                    <TableRow key={voucher.id} data-testid={`report-row-${voucher.id}`}>
-                      <TableCell className="sticky left-0 bg-background font-mono font-medium">
-                        {voucher.barcode}
+                  {redemptions.map((log) => (
+                    <TableRow key={log.id} data-testid={`report-row-${log.id}`}>
+                      <TableCell className="sticky left-0 bg-background font-medium capitalize">
+                        {log.action}
                       </TableCell>
-                      <TableCell>
-                        <Badge variant="secondary">R{voucher.value}</Badge>
-                      </TableCell>
-                      <TableCell>{voucher.batch_number}</TableCell>
-                      <TableCell>{formatDate(voucher.redeemed_at)}</TableCell>
-                      <TableCell>{formatTime(voucher.redeemed_at)}</TableCell>
                       <TableCell className="max-w-[200px] truncate">
-                        {voucher.redeemed_by_email || voucher.redeemed_by || '-'}
+                        {log.userEmail || log.userId || '-'}
+                      </TableCell>
+                      <TableCell>{formatDate(log.timestamp)}</TableCell>
+                      <TableCell>{formatTime(log.timestamp)}</TableCell>
+                      <TableCell>
+                        <Badge variant="secondary">
+                          R{(log.details as { value?: number } | null)?.value || 50}
+                        </Badge>
                       </TableCell>
                     </TableRow>
                   ))}
