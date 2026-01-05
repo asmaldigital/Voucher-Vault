@@ -25,22 +25,52 @@ export async function registerRoutes(
   httpServer: Server,
   app: Express
 ): Promise<Server> {
+  // Health check endpoint for debugging
+  app.get("/api/health", async (req: Request, res: Response) => {
+    try {
+      // Check database connection
+      const userCount = await storage.getAllUsers();
+      console.log("Health check - users in database:", userCount.length);
+      return res.json({ 
+        status: "ok", 
+        database: "connected",
+        userCount: userCount.length,
+        environment: process.env.NODE_ENV || "development"
+      });
+    } catch (error: any) {
+      console.error("Health check failed:", error.message);
+      return res.status(500).json({ 
+        status: "error", 
+        database: "disconnected",
+        error: error.message 
+      });
+    }
+  });
+
   // Auth routes
   app.post("/api/auth/login", async (req: Request, res: Response) => {
     try {
+      console.log("Login attempt for:", req.body.email);
+      
       const parseResult = loginSchema.safeParse(req.body);
       if (!parseResult.success) {
+        console.log("Validation failed:", parseResult.error.errors[0].message);
         return res.status(400).json({ error: parseResult.error.errors[0].message });
       }
 
       const { email, password } = parseResult.data;
+      console.log("Looking up user:", email);
+      
       const user = await storage.getUserByEmail(email);
+      console.log("User found:", user ? "yes" : "no");
 
       if (!user) {
         return res.status(401).json({ error: "Invalid email or password" });
       }
 
       const isValidPassword = await bcrypt.compare(password, user.password);
+      console.log("Password valid:", isValidPassword);
+      
       if (!isValidPassword) {
         return res.status(401).json({ error: "Invalid email or password" });
       }
@@ -49,6 +79,8 @@ export async function registerRoutes(
       req.session.userEmail = user.email;
       req.session.userRole = user.role;
 
+      console.log("Login successful for:", email);
+      
       return res.json({
         user: {
           id: user.id,
@@ -56,8 +88,8 @@ export async function registerRoutes(
           role: user.role,
         },
       });
-    } catch (error) {
-      console.error("Login error:", error);
+    } catch (error: any) {
+      console.error("Login error:", error.message, error.stack);
       return res.status(500).json({ error: "Internal server error" });
     }
   });
