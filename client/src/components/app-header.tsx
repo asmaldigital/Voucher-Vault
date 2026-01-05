@@ -2,6 +2,7 @@ import { useAuth } from '@/lib/auth-context';
 import { Button } from '@/components/ui/button';
 import { SidebarTrigger } from '@/components/ui/sidebar';
 import { LogOut, User } from 'lucide-react';
+import logoPng from "@assets/supersave-logo_1767626702003.png";
 
 export function AppHeader() {
   const { user, signOut } = useAuth();
@@ -11,9 +12,7 @@ export function AppHeader() {
       <div className="flex items-center gap-2">
         <SidebarTrigger data-testid="button-sidebar-toggle" />
         <div className="flex items-center gap-2">
-          <div className="flex h-8 w-8 items-center justify-center rounded-md bg-primary">
-            <span className="text-sm font-bold text-primary-foreground">SS</span>
-          </div>
+          <img src={logoPng} alt="SuperSave Logo" className="h-8 w-8 object-contain" />
           <span className="hidden text-lg font-semibold md:inline-block">SuperSave</span>
         </div>
       </div>

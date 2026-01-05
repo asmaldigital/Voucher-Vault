@@ -10,6 +10,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { useToast } from '@/hooks/use-toast';
 import { Loader2, Eye, EyeOff, ShieldCheck, AlertCircle } from 'lucide-react';
+import logoPng from "@assets/supersave-logo_1767626702003.png";
 
 const loginSchema = z.object({
   email: z.string().email('Please enter a valid email address'),
@@ -77,9 +78,7 @@ export default function LoginPage() {
     <div className="flex min-h-screen flex-col items-center justify-center bg-background p-4">
       <div className="w-full max-w-md space-y-8">
         <div className="flex flex-col items-center gap-4 text-center">
-          <div className="flex h-16 w-16 items-center justify-center rounded-xl bg-primary shadow-lg">
-            <span className="text-2xl font-bold text-primary-foreground">SS</span>
-          </div>
+          <img src={logoPng} alt="SuperSave Logo" className="h-24 w-24 object-contain" />
           <div className="space-y-2">
             <h1 className="text-3xl font-bold tracking-tight">SuperSave</h1>
             <p className="text-muted-foreground">Voucher Management System</p>
