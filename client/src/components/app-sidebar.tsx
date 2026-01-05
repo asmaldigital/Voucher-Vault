@@ -17,6 +17,7 @@ import {
   ListChecks,
   Upload,
   FileBarChart,
+  Users,
 } from 'lucide-react';
 import { useAuth } from '@/lib/auth-context';
 
@@ -25,32 +26,45 @@ const menuItems = [
     title: 'Dashboard',
     url: '/',
     icon: LayoutDashboard,
+    adminOnly: false,
   },
   {
     title: 'Scan & Redeem',
     url: '/scan',
     icon: ScanBarcode,
+    adminOnly: false,
   },
   {
     title: 'Vouchers',
     url: '/vouchers',
     icon: ListChecks,
+    adminOnly: false,
   },
   {
     title: 'Import',
     url: '/import',
     icon: Upload,
+    adminOnly: false,
   },
   {
     title: 'Reports',
     url: '/reports',
     icon: FileBarChart,
+    adminOnly: false,
+  },
+  {
+    title: 'Users',
+    url: '/users',
+    icon: Users,
+    adminOnly: true,
   },
 ];
 
 export function AppSidebar() {
   const [location] = useLocation();
-  const { user } = useAuth();
+  const { user, isAdmin, userRole } = useAuth();
+  
+  const visibleMenuItems = menuItems.filter(item => !item.adminOnly || isAdmin);
 
   return (
     <Sidebar>
@@ -70,7 +84,7 @@ export function AppSidebar() {
           <SidebarGroupLabel>Navigation</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
-              {menuItems.map((item) => (
+              {visibleMenuItems.map((item) => (
                 <SidebarMenuItem key={item.title}>
                   <SidebarMenuButton
                     asChild
@@ -94,6 +108,11 @@ export function AppSidebar() {
           <span className="truncate text-sm font-medium" data-testid="sidebar-user-email">
             {user?.email}
           </span>
+          {userRole && (
+            <span className="text-xs text-muted-foreground capitalize" data-testid="sidebar-user-role">
+              {userRole}
+            </span>
+          )}
         </div>
       </SidebarFooter>
     </Sidebar>

@@ -1,0 +1,226 @@
+import { useState } from 'react';
+import { useQuery, useMutation } from '@tanstack/react-query';
+import { useAuth } from '@/lib/auth-context';
+import { queryClient } from '@/lib/queryClient';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Badge } from '@/components/ui/badge';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { useToast } from '@/hooks/use-toast';
+import { UserPlus, Users, Shield, Edit } from 'lucide-react';
+import type { UserProfile, CreateUser } from '@shared/schema';
+import { Redirect } from 'wouter';
+
+export default function UsersPage() {
+  const { session, isAdmin, loading } = useAuth();
+  const { toast } = useToast();
+  const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [role, setRole] = useState<'admin' | 'editor'>('editor');
+
+  const { data: users = [], isLoading: usersLoading } = useQuery<UserProfile[]>({
+    queryKey: ['/api/users'],
+    queryFn: async () => {
+      const response = await fetch('/api/users', {
+        headers: {
+          Authorization: `Bearer ${session?.access_token}`,
+        },
+      });
+      if (!response.ok) throw new Error('Failed to fetch users');
+      return response.json();
+    },
+    enabled: !!session?.access_token && isAdmin,
+  });
+
+  const createUserMutation = useMutation({
+    mutationFn: async (userData: CreateUser) => {
+      const response = await fetch('/api/users', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${session?.access_token}`,
+        },
+        body: JSON.stringify(userData),
+      });
+      
+      const data = await response.json();
+      
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to create user');
+      }
+      
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/users'] });
+      toast({
+        title: 'User created',
+        description: 'The new user has been created successfully.',
+      });
+      setIsDialogOpen(false);
+      setEmail('');
+      setPassword('');
+      setRole('editor');
+    },
+    onError: (error: Error) => {
+      toast({
+        title: 'Error creating user',
+        description: error.message,
+        variant: 'destructive',
+      });
+    },
+  });
+
+  const handleCreateUser = (e: React.FormEvent) => {
+    e.preventDefault();
+    createUserMutation.mutate({ email, password, role });
+  };
+
+  if (loading) {
+    return (
+      <div className="flex h-full items-center justify-center">
+        <div className="text-muted-foreground">Loading...</div>
+      </div>
+    );
+  }
+
+  if (!isAdmin) {
+    return <Redirect to="/" />;
+  }
+
+  return (
+    <div className="container max-w-4xl py-8">
+      <div className="mb-8 flex items-center justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold" data-testid="text-page-title">User Management</h1>
+          <p className="text-muted-foreground">Manage staff accounts and permissions</p>
+        </div>
+        <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+          <DialogTrigger asChild>
+            <Button data-testid="button-add-user">
+              <UserPlus className="mr-2 h-4 w-4" />
+              Add User
+            </Button>
+          </DialogTrigger>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Create New User</DialogTitle>
+              <DialogDescription>
+                Add a new staff member to the voucher system.
+              </DialogDescription>
+            </DialogHeader>
+            <form onSubmit={handleCreateUser} className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="email">Email</Label>
+                <Input
+                  id="email"
+                  type="email"
+                  placeholder="staff@supersave.co.za"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  required
+                  data-testid="input-user-email"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="password">Password</Label>
+                <Input
+                  id="password"
+                  type="password"
+                  placeholder="Minimum 6 characters"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  required
+                  minLength={6}
+                  data-testid="input-user-password"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="role">Role</Label>
+                <Select value={role} onValueChange={(value: 'admin' | 'editor') => setRole(value)}>
+                  <SelectTrigger data-testid="select-user-role">
+                    <SelectValue placeholder="Select a role" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="editor">
+                      <div className="flex items-center gap-2">
+                        <Edit className="h-4 w-4" />
+                        Editor - Can scan and redeem vouchers
+                      </div>
+                    </SelectItem>
+                    <SelectItem value="admin">
+                      <div className="flex items-center gap-2">
+                        <Shield className="h-4 w-4" />
+                        Admin - Full access including user management
+                      </div>
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="flex justify-end gap-3 pt-4">
+                <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>
+                  Cancel
+                </Button>
+                <Button type="submit" disabled={createUserMutation.isPending} data-testid="button-create-user">
+                  {createUserMutation.isPending ? 'Creating...' : 'Create User'}
+                </Button>
+              </div>
+            </form>
+          </DialogContent>
+        </Dialog>
+      </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Users className="h-5 w-5" />
+            Staff Members
+          </CardTitle>
+          <CardDescription>
+            {users.length} user{users.length !== 1 ? 's' : ''} registered
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {usersLoading ? (
+            <div className="py-8 text-center text-muted-foreground">Loading users...</div>
+          ) : users.length === 0 ? (
+            <div className="py-8 text-center text-muted-foreground">No users found</div>
+          ) : (
+            <div className="divide-y">
+              {users.map((user) => (
+                <div
+                  key={user.id}
+                  className="flex items-center justify-between py-4"
+                  data-testid={`row-user-${user.id}`}
+                >
+                  <div className="flex flex-col gap-1">
+                    <span className="font-medium" data-testid={`text-user-email-${user.id}`}>
+                      {user.email}
+                    </span>
+                    <span className="text-xs text-muted-foreground">
+                      Created {new Date(user.created_at).toLocaleDateString()}
+                    </span>
+                  </div>
+                  <Badge
+                    variant={user.role === 'admin' ? 'default' : 'secondary'}
+                    data-testid={`badge-user-role-${user.id}`}
+                  >
+                    {user.role === 'admin' ? (
+                      <><Shield className="mr-1 h-3 w-3" /> Admin</>
+                    ) : (
+                      <><Edit className="mr-1 h-3 w-3" /> Editor</>
+                    )}
+                  </Badge>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}

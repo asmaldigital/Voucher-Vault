@@ -97,13 +97,17 @@ export async function registerRoutes(
       const token = authHeader.split(' ')[1];
 
       const supabaseUrl = process.env.SUPABASE_URL;
-      const supabaseAnonKey = process.env.SUPABASE_ANON_KEY;
+      const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
-      if (!supabaseUrl || !supabaseAnonKey) {
+      if (!supabaseUrl || !supabaseServiceKey) {
         return res.status(500).json({ error: 'Server configuration error' });
       }
 
-      const supabaseClient = createClient(supabaseUrl, supabaseAnonKey, {
+      const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey, {
+        auth: { autoRefreshToken: false, persistSession: false }
+      });
+
+      const supabaseClient = createClient(supabaseUrl, process.env.SUPABASE_ANON_KEY!, {
         auth: { autoRefreshToken: false, persistSession: false },
         global: { headers: { Authorization: `Bearer ${token}` } }
       });
@@ -114,7 +118,17 @@ export async function registerRoutes(
         return res.status(401).json({ error: 'Invalid token' });
       }
 
-      const { data: profiles, error: profilesError } = await supabaseClient
+      const { data: requestingProfile, error: profileError } = await supabaseAdmin
+        .from('user_profiles')
+        .select('role')
+        .eq('id', user.id)
+        .single();
+
+      if (profileError || !requestingProfile || requestingProfile.role !== 'admin') {
+        return res.status(403).json({ error: 'Only admins can view users' });
+      }
+
+      const { data: profiles, error: profilesError } = await supabaseAdmin
         .from('user_profiles')
         .select('*')
         .order('created_at', { ascending: false });

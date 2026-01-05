@@ -14,6 +14,7 @@ import ScanPage from "@/pages/scan";
 import VouchersPage from "@/pages/vouchers";
 import ImportPage from "@/pages/import";
 import ReportsPage from "@/pages/reports";
+import UsersPage from "@/pages/users";
 import NotFound from "@/pages/not-found";
 
 function AppLayout({ children }: { children: React.ReactNode }) {
@@ -46,6 +47,7 @@ function AuthenticatedRoutes() {
         <Route path="/vouchers" component={VouchersPage} />
         <Route path="/import" component={ImportPage} />
         <Route path="/reports" component={ReportsPage} />
+        <Route path="/users" component={UsersPage} />
         <Route component={NotFound} />
       </Switch>
     </AppLayout>

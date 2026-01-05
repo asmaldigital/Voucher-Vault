@@ -29,7 +29,8 @@ A voucher management system for SuperSave, a South African supermarket. The syst
 │   │   │   ├── scan.tsx      # Scan/redeem vouchers
 │   │   │   ├── vouchers.tsx  # Voucher list with filters
 │   │   │   ├── import.tsx    # CSV import
-│   │   │   └── reports.tsx   # Redemption reports
+│   │   │   ├── reports.tsx   # Redemption reports
+│   │   │   └── users.tsx     # User management (admin only)
 │   │   └── App.tsx
 ├── server/
 │   ├── routes.ts             # API endpoint for config
@@ -60,6 +61,13 @@ A voucher management system for SuperSave, a South African supermarket. The syst
 - `timestamp` (timestamp)
 - `details` (JSONB for extra info)
 
+### user_profiles table
+- `id` (UUID, primary key, references auth.users)
+- `email` (string)
+- `role` (enum: 'admin', 'editor')
+- `created_at` (timestamp)
+- `created_by` (user id, nullable)
+
 ## Setup Instructions
 
 ### 1. Supabase Configuration
@@ -72,6 +80,7 @@ A voucher management system for SuperSave, a South African supermarket. The syst
 The following secrets are required:
 - `SUPABASE_URL`: Your Supabase project URL
 - `SUPABASE_ANON_KEY`: Your Supabase anon/public key
+- `SUPABASE_SERVICE_ROLE_KEY`: Your Supabase service role key (for admin user creation)
 
 ### 3. Running the App
 ```bash
@@ -119,6 +128,12 @@ npm run dev
 - Exportable to CSV
 - Detailed redemption history table
 
+### 7. User Management (Admin Only)
+- View all staff members with roles
+- Create new users with email/password
+- Assign Admin or Editor roles
+- Role-based sidebar (Users menu only visible to admins)
+
 ## Design System
 - Primary color: Green (SuperSave branding)
 - Font: Roboto (sans) and Roboto Mono (for barcodes/values)
@@ -132,6 +147,13 @@ npm run dev
 - No API keys exposed in frontend code
 - RLS policy restricts voucher updates: only `available` status can transition to `redeemed`
 - Prevents double-redemption and status tampering at database level
+- Role-based access control: Admin and Editor roles
+- User management endpoints enforce admin-only access at both API and RLS levels
+- Admin users can void vouchers; editors cannot
+
+## User Roles
+- **Admin**: Full access including user management, voiding vouchers
+- **Editor**: Standard access for scanning, redeeming, importing, and viewing reports
 
 ## Architecture Notes
 
@@ -150,3 +172,9 @@ This pattern ensures no database queries are made before the Supabase client is 
 - Strengthened RLS policies to only allow `available` → `redeemed` transitions
 - Added `useSupabase()` hook with `isReady` flag for async-safe data access
 - All page components now properly wait for Supabase before querying
+- Added multi-level user roles system (Admin/Editor)
+- Created user_profiles table with RLS policies for admin-only management
+- Added backend API endpoints for creating and listing users
+- Auth context now exposes userRole and isAdmin flags
+- Created admin-only Users management page
+- Sidebar dynamically shows/hides admin-only menu items based on role
