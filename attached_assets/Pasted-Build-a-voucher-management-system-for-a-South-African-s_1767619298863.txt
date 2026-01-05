@@ -1,0 +1,73 @@
+Build a voucher management system for a South African supermarket called "SuperSave".
+
+## WHAT IT DOES:
+- Tracks R50 paper vouchers with unique barcodes
+- Staff scan voucher barcode → instantly marked as "redeemed"
+- Management needs full accountability (millions of Rands at stake)
+
+## TECH STACK:
+- Frontend: React with Tailwind CSS
+- Backend: Supabase (I have an account - will provide keys)
+- Authentication: Supabase Auth (email/password login)
+
+## DATABASE TABLES NEEDED:
+
+1. vouchers table:
+   - id (auto-generated)
+   - barcode (unique string)
+   - value (number, default 50)
+   - status (enum: 'available', 'redeemed', 'expired', 'voided')
+   - batch_number (string)
+   - created_at (timestamp)
+   - redeemed_at (timestamp, nullable)
+   - redeemed_by (user id, nullable)
+
+2. audit_log table:
+   - id (auto-generated)
+   - action (string: 'created', 'redeemed', 'voided', etc.)
+   - voucher_id (reference)
+   - user_id (who did it)
+   - timestamp
+   - details (JSON for extra info)
+
+## PAGES NEEDED:
+
+1. Login page - email/password authentication
+2. Dashboard - show voucher stats (total, available, redeemed today)
+3. Scan/Redeem page - input barcode, instantly mark as redeemed
+4. Vouchers list - view all vouchers, filter by status
+5. Import page - upload CSV to bulk-add voucher barcodes
+6. Reports page - redemption history with date filters
+
+## CRITICAL FEATURES:
+
+1. INSTANT REDEMPTION:
+   - User enters/scans barcode
+   - System checks if voucher exists and is "available"
+   - If yes: mark as "redeemed", record timestamp + user, show success
+   - If already redeemed: show error with who/when it was redeemed
+   - If not found: show "Voucher not found" error
+
+2. SECURITY:
+   - All pages require login (no public access)
+   - Enable Row Level Security on all Supabase tables
+   - Only authenticated users can read/write data
+   - Log every action to audit_log
+
+3. PROTECTED ROUTES:
+   - Redirect to login if not authenticated
+   - Show user's email in header
+   - Logout button that clears session
+
+## DESIGN:
+- Clean, professional look
+- Mobile-friendly (staff will use phones to scan)
+- Green color scheme (SuperSave brand)
+- Large, clear buttons for scanning
+
+## DO NOT:
+- Do NOT create any "tills" or "allocations" features
+- Do NOT use Railway - use Supabase
+- Do NOT expose any API keys in frontend code
+
+Start by setting up the Supabase connection and authentication, then build the pages one by one.
