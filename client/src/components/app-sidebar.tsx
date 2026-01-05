@@ -20,6 +20,7 @@ import {
   Users,
 } from 'lucide-react';
 import { useAuth } from '@/lib/auth-context';
+import supersaveLogo from '@assets/supersave-logo_1767626702003.png';
 
 const menuItems = [
   {
@@ -70,9 +71,11 @@ export function AppSidebar() {
     <Sidebar>
       <SidebarHeader className="border-b p-4">
         <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-md bg-primary">
-            <span className="text-lg font-bold text-primary-foreground">SS</span>
-          </div>
+          <img 
+            src={supersaveLogo} 
+            alt="SuperSave Logo" 
+            className="h-10 w-10 object-contain"
+          />
           <div className="flex flex-col">
             <span className="text-base font-semibold">SuperSave</span>
             <span className="text-xs text-muted-foreground">Voucher System</span>

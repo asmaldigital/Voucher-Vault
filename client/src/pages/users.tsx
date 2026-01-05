@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { useAuth } from '@/lib/auth-context';
 import { queryClient } from '@/lib/queryClient';
@@ -10,9 +10,21 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { useToast } from '@/hooks/use-toast';
-import { UserPlus, Users, Shield, Edit } from 'lucide-react';
+import { UserPlus, Users, Shield, Edit, CheckCircle2, XCircle } from 'lucide-react';
 import type { User, CreateUser } from '@shared/schema';
 import { Redirect } from 'wouter';
+
+function validatePassword(password: string) {
+  const checks = {
+    minLength: password.length >= 8,
+    hasUppercase: /[A-Z]/.test(password),
+    hasLowercase: /[a-z]/.test(password),
+    hasNumber: /[0-9]/.test(password),
+    hasSpecial: /[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(password),
+  };
+  const isValid = Object.values(checks).every(Boolean);
+  return { checks, isValid };
+}
 
 interface UserListItem {
   id: string;
@@ -78,8 +90,18 @@ export default function UsersPage() {
     },
   });
 
+  const passwordValidation = useMemo(() => validatePassword(password), [password]);
+
   const handleCreateUser = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!passwordValidation.isValid) {
+      toast({
+        title: 'Weak password',
+        description: 'Please ensure your password meets all the requirements listed below.',
+        variant: 'destructive',
+      });
+      return;
+    }
     createUserMutation.mutate({ email, password, role });
   };
 
@@ -134,13 +156,65 @@ export default function UsersPage() {
                 <Input
                   id="password"
                   type="password"
-                  placeholder="Minimum 6 characters"
+                  placeholder="Enter a strong password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   required
-                  minLength={6}
                   data-testid="input-user-password"
                 />
+                <div className="mt-2 space-y-1 text-xs">
+                  <p className="font-medium text-muted-foreground mb-1">Password must have:</p>
+                  <div className="flex items-center gap-1">
+                    {passwordValidation.checks.minLength ? (
+                      <CheckCircle2 className="h-3 w-3 text-primary" />
+                    ) : (
+                      <XCircle className="h-3 w-3 text-destructive" />
+                    )}
+                    <span className={passwordValidation.checks.minLength ? 'text-primary' : 'text-muted-foreground'}>
+                      At least 8 characters
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    {passwordValidation.checks.hasUppercase ? (
+                      <CheckCircle2 className="h-3 w-3 text-primary" />
+                    ) : (
+                      <XCircle className="h-3 w-3 text-destructive" />
+                    )}
+                    <span className={passwordValidation.checks.hasUppercase ? 'text-primary' : 'text-muted-foreground'}>
+                      One uppercase letter (A-Z)
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    {passwordValidation.checks.hasLowercase ? (
+                      <CheckCircle2 className="h-3 w-3 text-primary" />
+                    ) : (
+                      <XCircle className="h-3 w-3 text-destructive" />
+                    )}
+                    <span className={passwordValidation.checks.hasLowercase ? 'text-primary' : 'text-muted-foreground'}>
+                      One lowercase letter (a-z)
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    {passwordValidation.checks.hasNumber ? (
+                      <CheckCircle2 className="h-3 w-3 text-primary" />
+                    ) : (
+                      <XCircle className="h-3 w-3 text-destructive" />
+                    )}
+                    <span className={passwordValidation.checks.hasNumber ? 'text-primary' : 'text-muted-foreground'}>
+                      One number (0-9)
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    {passwordValidation.checks.hasSpecial ? (
+                      <CheckCircle2 className="h-3 w-3 text-primary" />
+                    ) : (
+                      <XCircle className="h-3 w-3 text-destructive" />
+                    )}
+                    <span className={passwordValidation.checks.hasSpecial ? 'text-primary' : 'text-muted-foreground'}>
+                      One special character (!@#$%^&* etc.)
+                    </span>
+                  </div>
+                </div>
               </div>
               <div className="space-y-2">
                 <Label htmlFor="role">Role</Label>

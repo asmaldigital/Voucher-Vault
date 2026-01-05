@@ -159,8 +159,8 @@ export default function DashboardPage() {
         />
         <StatCard
           title="Total Value"
-          value={formatCurrency(stats?.totalValue ?? 0)}
-          subtitle="Value of all vouchers"
+          value={formatCurrency((stats?.totalValue ?? 0) - (stats?.redeemedValue ?? 0))}
+          subtitle="Remaining value available"
           icon={Banknote}
           variant="default"
         />
