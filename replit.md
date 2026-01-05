@@ -99,7 +99,7 @@ npm run dev
 
 ## Default Admin Credentials
 - Email: admin@supersave.co.za
-- Password: admin123
+- Password: SuperSaveAdmin2026!
 
 ## Key Features
 

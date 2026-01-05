@@ -33,6 +33,11 @@ app.use(
 
 app.use(express.urlencoded({ extended: false }));
 
+// Trust proxy for production (behind reverse proxy)
+if (process.env.NODE_ENV === "production") {
+  app.set("trust proxy", 1);
+}
+
 const PgStore = connectPgSimple(session);
 
 app.use(
@@ -48,6 +53,7 @@ app.use(
       secure: process.env.NODE_ENV === "production",
       httpOnly: true,
       maxAge: 24 * 60 * 60 * 1000,
+      sameSite: process.env.NODE_ENV === "production" ? "lax" : "lax",
     },
   })
 );
