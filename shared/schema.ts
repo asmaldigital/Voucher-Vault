@@ -85,3 +85,30 @@ export interface RedemptionResult {
   redeemedBy?: string;
   redeemedAt?: string;
 }
+
+// User roles
+export const UserRole = {
+  ADMIN: 'admin',
+  EDITOR: 'editor'
+} as const;
+
+export type UserRoleType = typeof UserRole[keyof typeof UserRole];
+
+// User profile schema
+export const userProfileSchema = z.object({
+  id: z.string().uuid(),
+  email: z.string().email(),
+  role: z.enum(['admin', 'editor']),
+  created_at: z.string(),
+  created_by: z.string().uuid().nullable()
+});
+
+export type UserProfile = z.infer<typeof userProfileSchema>;
+
+export const createUserSchema = z.object({
+  email: z.string().email("Please enter a valid email address"),
+  password: z.string().min(6, "Password must be at least 6 characters"),
+  role: z.enum(['admin', 'editor']).default('editor')
+});
+
+export type CreateUser = z.infer<typeof createUserSchema>;
