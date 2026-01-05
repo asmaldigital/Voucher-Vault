@@ -1,0 +1,439 @@
+import { useState, useRef } from 'react';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useAuth, useSupabase } from '@/lib/auth-context';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
+import { Label } from '@/components/ui/label';
+import { Progress } from '@/components/ui/progress';
+import { useToast } from '@/hooks/use-toast';
+import {
+  Upload,
+  FileSpreadsheet,
+  CheckCircle2,
+  AlertCircle,
+  Loader2,
+  Download,
+} from 'lucide-react';
+import type { ImportResult } from '@shared/schema';
+
+export default function ImportPage() {
+  const [file, setFile] = useState<File | null>(null);
+  const [batchNumber, setBatchNumber] = useState('');
+  const [voucherValue, setVoucherValue] = useState('50');
+  const [importing, setImporting] = useState(false);
+  const [progress, setProgress] = useState(0);
+  const [result, setResult] = useState<ImportResult | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const { user } = useAuth();
+  const { supabase } = useSupabase();
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const selectedFile = e.target.files?.[0];
+    if (selectedFile) {
+      if (!selectedFile.name.endsWith('.csv')) {
+        toast({
+          variant: 'destructive',
+          title: 'Invalid file type',
+          description: 'Please upload a CSV file',
+        });
+        return;
+      }
+      setFile(selectedFile);
+      setResult(null);
+    }
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    const droppedFile = e.dataTransfer.files[0];
+    if (droppedFile) {
+      if (!droppedFile.name.endsWith('.csv')) {
+        toast({
+          variant: 'destructive',
+          title: 'Invalid file type',
+          description: 'Please upload a CSV file',
+        });
+        return;
+      }
+      setFile(droppedFile);
+      setResult(null);
+    }
+  };
+
+  const parseCSV = (content: string): string[] => {
+    const lines = content.split('\n').filter((line) => line.trim());
+    const barcodes: string[] = [];
+    
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i].trim();
+      if (!line) continue;
+      
+      const firstLine = lines[0].toLowerCase();
+      if (i === 0 && (firstLine.includes('barcode') || firstLine.includes('code'))) {
+        continue;
+      }
+      
+      const columns = line.split(',');
+      const barcode = columns[0].trim().replace(/"/g, '');
+      
+      if (barcode && barcode.length > 0) {
+        barcodes.push(barcode);
+      }
+    }
+    
+    return barcodes;
+  };
+
+  const importMutation = useMutation({
+    mutationFn: async () => {
+      if (!file || !batchNumber.trim()) {
+        throw new Error('Please provide both a file and batch number');
+      }
+
+      if (!supabase) {
+        throw new Error('System not ready. Please try again.');
+      }
+
+      const content = await file.text();
+      const barcodes = parseCSV(content);
+
+      if (barcodes.length === 0) {
+        throw new Error('No valid barcodes found in the CSV file');
+      }
+
+      const value = parseInt(voucherValue) || 50;
+      const results: ImportResult = { success: 0, failed: 0, errors: [] };
+      const batchSize = 50;
+
+      for (let i = 0; i < barcodes.length; i += batchSize) {
+        const batch = barcodes.slice(i, i + batchSize);
+        const vouchers = batch.map((barcode) => ({
+          barcode,
+          value,
+          status: 'available' as const,
+          batch_number: batchNumber.trim(),
+        }));
+
+        const { data, error } = await supabase
+          .from('vouchers')
+          .insert(vouchers)
+          .select();
+
+        if (error) {
+          if (error.code === '23505') {
+            for (const barcode of batch) {
+              const { error: singleError } = await supabase
+                .from('vouchers')
+                .insert({
+                  barcode,
+                  value,
+                  status: 'available',
+                  batch_number: batchNumber.trim(),
+                });
+
+              if (singleError) {
+                results.failed++;
+                if (results.errors.length < 10) {
+                  results.errors.push(`Barcode ${barcode}: ${singleError.message}`);
+                }
+              } else {
+                results.success++;
+              }
+            }
+          } else {
+            results.failed += batch.length;
+            results.errors.push(error.message);
+          }
+        } else {
+          results.success += data?.length ?? batch.length;
+        }
+
+        setProgress(Math.round(((i + batchSize) / barcodes.length) * 100));
+      }
+
+      if (results.success > 0) {
+        await supabase.from('audit_log').insert({
+          action: 'imported',
+          voucher_id: null,
+          user_id: user?.id,
+          details: {
+            batch_number: batchNumber.trim(),
+            total_imported: results.success,
+            total_failed: results.failed,
+            file_name: file.name,
+          },
+        });
+      }
+
+      return results;
+    },
+    onSuccess: (data) => {
+      setResult(data);
+      setImporting(false);
+      queryClient.invalidateQueries({ queryKey: ['/api/vouchers'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/dashboard/stats'] });
+      
+      if (data.success > 0) {
+        toast({
+          title: 'Import completed',
+          description: `Successfully imported ${data.success} vouchers`,
+        });
+      }
+    },
+    onError: (error: Error) => {
+      setImporting(false);
+      toast({
+        variant: 'destructive',
+        title: 'Import failed',
+        description: error.message,
+      });
+    },
+  });
+
+  const handleImport = () => {
+    if (!file) {
+      toast({
+        variant: 'destructive',
+        title: 'Error',
+        description: 'Please select a CSV file to import',
+      });
+      return;
+    }
+    if (!batchNumber.trim()) {
+      toast({
+        variant: 'destructive',
+        title: 'Error',
+        description: 'Please enter a batch number',
+      });
+      return;
+    }
+    setImporting(true);
+    setProgress(0);
+    setResult(null);
+    importMutation.mutate();
+  };
+
+  const handleReset = () => {
+    setFile(null);
+    setBatchNumber('');
+    setVoucherValue('50');
+    setResult(null);
+    setProgress(0);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  };
+
+  const downloadTemplate = () => {
+    const template = 'barcode\n1234567890123\n1234567890124\n1234567890125';
+    const blob = new Blob([template], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'voucher_template.csv';
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  return (
+    <div className="flex flex-col gap-6 p-6">
+      <div className="flex flex-col gap-2">
+        <h1 className="text-3xl font-bold">Import Vouchers</h1>
+        <p className="text-muted-foreground">
+          Bulk import voucher barcodes from a CSV file
+        </p>
+      </div>
+
+      <div className="grid gap-6 lg:grid-cols-2">
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Upload className="h-5 w-5" />
+              Upload CSV File
+            </CardTitle>
+            <CardDescription>
+              Upload a CSV file containing voucher barcodes
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div
+              className="flex flex-col items-center justify-center rounded-lg border-2 border-dashed p-8 transition-colors hover:border-primary/50"
+              onDragOver={(e) => e.preventDefault()}
+              onDrop={handleDrop}
+            >
+              <FileSpreadsheet className="mb-4 h-12 w-12 text-muted-foreground" />
+              <p className="mb-2 text-sm text-muted-foreground">
+                Drag and drop your CSV file here, or
+              </p>
+              <Button
+                variant="outline"
+                onClick={() => fileInputRef.current?.click()}
+                data-testid="button-select-file"
+              >
+                Select File
+              </Button>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".csv"
+                onChange={handleFileChange}
+                className="hidden"
+                data-testid="input-file"
+              />
+            </div>
+
+            {file && (
+              <div className="flex items-center gap-2 rounded-md bg-muted p-3">
+                <FileSpreadsheet className="h-5 w-5 text-primary" />
+                <span className="flex-1 truncate text-sm" data-testid="text-selected-file">
+                  {file.name}
+                </span>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setFile(null)}
+                  data-testid="button-remove-file"
+                >
+                  Remove
+                </Button>
+              </div>
+            )}
+
+            <div className="space-y-2">
+              <Label htmlFor="batch">Batch Number</Label>
+              <Input
+                id="batch"
+                placeholder="e.g., BATCH-2024-001"
+                value={batchNumber}
+                onChange={(e) => setBatchNumber(e.target.value)}
+                data-testid="input-batch-number"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="value">Voucher Value (Rands)</Label>
+              <Input
+                id="value"
+                type="number"
+                placeholder="50"
+                value={voucherValue}
+                onChange={(e) => setVoucherValue(e.target.value)}
+                data-testid="input-voucher-value"
+              />
+            </div>
+
+            {importing && (
+              <div className="space-y-2">
+                <Progress value={progress} className="h-2" />
+                <p className="text-center text-sm text-muted-foreground">
+                  Importing... {progress}%
+                </p>
+              </div>
+            )}
+
+            <div className="flex gap-2">
+              <Button
+                onClick={handleImport}
+                disabled={!file || !batchNumber.trim() || importing}
+                className="flex-1 h-12"
+                data-testid="button-import"
+              >
+                {importing ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Importing...
+                  </>
+                ) : (
+                  <>
+                    <Upload className="mr-2 h-4 w-4" />
+                    Import Vouchers
+                  </>
+                )}
+              </Button>
+              {result && (
+                <Button variant="outline" onClick={handleReset} data-testid="button-reset">
+                  Reset
+                </Button>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+
+        <div className="space-y-6">
+          {result && (
+            <Card className={result.failed === 0 ? 'border-primary' : 'border-yellow-500'}>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  {result.failed === 0 ? (
+                    <CheckCircle2 className="h-5 w-5 text-primary" />
+                  ) : (
+                    <AlertCircle className="h-5 w-5 text-yellow-600 dark:text-yellow-500" />
+                  )}
+                  Import Results
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="rounded-md bg-primary/10 p-4 text-center">
+                    <p className="text-3xl font-bold text-primary" data-testid="text-import-success">
+                      {result.success}
+                    </p>
+                    <p className="text-sm text-muted-foreground">Imported</p>
+                  </div>
+                  <div className="rounded-md bg-destructive/10 p-4 text-center">
+                    <p className="text-3xl font-bold text-destructive" data-testid="text-import-failed">
+                      {result.failed}
+                    </p>
+                    <p className="text-sm text-muted-foreground">Failed</p>
+                  </div>
+                </div>
+
+                {result.errors.length > 0 && (
+                  <div className="space-y-2">
+                    <p className="text-sm font-medium text-destructive">Errors:</p>
+                    <div className="max-h-32 overflow-auto rounded-md bg-muted p-3">
+                      {result.errors.map((error, i) => (
+                        <p key={i} className="text-xs text-muted-foreground">
+                          {error}
+                        </p>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )}
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Download className="h-5 w-5" />
+                CSV Template
+              </CardTitle>
+              <CardDescription>Download a sample CSV template</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <p className="text-sm text-muted-foreground">
+                Your CSV file should contain voucher barcodes in the first column.
+                The first row can optionally be a header row.
+              </p>
+              <div className="rounded-md bg-muted p-3 font-mono text-sm">
+                <p>barcode</p>
+                <p>1234567890123</p>
+                <p>1234567890124</p>
+                <p>1234567890125</p>
+              </div>
+              <Button variant="outline" onClick={downloadTemplate} className="w-full" data-testid="button-download-template">
+                <Download className="mr-2 h-4 w-4" />
+                Download Template
+              </Button>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    </div>
+  );
+}
