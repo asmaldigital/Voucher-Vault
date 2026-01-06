@@ -20,6 +20,7 @@ import {
   Users,
   TrendingUp,
   Wallet,
+  Download,
 } from 'lucide-react';
 import { useAuth } from '@/lib/auth-context';
 import supersaveLogo from '@assets/supersave-logo_1767626702003.png';
@@ -71,6 +72,12 @@ const menuItems = [
     title: 'Users',
     url: '/users',
     icon: Users,
+    adminOnly: true,
+  },
+  {
+    title: 'Export',
+    url: '/export',
+    icon: Download,
     adminOnly: true,
   },
 ];

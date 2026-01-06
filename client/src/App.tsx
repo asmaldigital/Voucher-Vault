@@ -17,6 +17,7 @@ import ReportsPage from "@/pages/reports";
 import AnalyticsPage from "@/pages/analytics";
 import AccountsPage from "@/pages/accounts";
 import UsersPage from "@/pages/users";
+import ExportPage from "@/pages/export";
 import ForgotPasswordPage from "@/pages/forgot-password";
 import ResetPasswordPage from "@/pages/reset-password";
 import NotFound from "@/pages/not-found";
@@ -54,6 +55,7 @@ function AuthenticatedRoutes() {
         <Route path="/analytics" component={AnalyticsPage} />
         <Route path="/accounts" component={AccountsPage} />
         <Route path="/users" component={UsersPage} />
+        <Route path="/export" component={ExportPage} />
         <Route component={NotFound} />
       </Switch>
     </AppLayout>

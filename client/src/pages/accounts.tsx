@@ -36,16 +36,9 @@ import {
 } from '@/components/ui/table';
 import { useToast } from '@/hooks/use-toast';
 import { apiRequest } from '@/lib/queryClient';
-import { Wallet, Plus, User, Mail, Phone, FileText, Loader2 } from 'lucide-react';
-import type { Account } from '@shared/schema';
-
-interface AccountWithStats extends Account {
-  totalVouchers: number;
-  availableVouchers: number;
-  redeemedVouchers: number;
-  totalValue: number;
-  availableValue: number;
-}
+import { Wallet, Plus, User, Mail, Phone, FileText, Loader2, DollarSign, TrendingUp, History } from 'lucide-react';
+import { format } from 'date-fns';
+import type { AccountSummary, AccountPurchase } from '@shared/schema';
 
 const accountFormSchema = z.object({
   name: z.string().min(1, 'Account name is required'),
@@ -57,12 +50,22 @@ const accountFormSchema = z.object({
 
 type AccountFormData = z.infer<typeof accountFormSchema>;
 
+const purchaseFormSchema = z.object({
+  amountRands: z.coerce.number().min(50, 'Minimum purchase is R50'),
+  notes: z.string().optional(),
+});
+
+type PurchaseFormData = z.infer<typeof purchaseFormSchema>;
+
 export default function AccountsPage() {
-  const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [isAccountDialogOpen, setIsAccountDialogOpen] = useState(false);
+  const [isPurchaseDialogOpen, setIsPurchaseDialogOpen] = useState(false);
+  const [isHistoryDialogOpen, setIsHistoryDialogOpen] = useState(false);
+  const [selectedAccountId, setSelectedAccountId] = useState<string | null>(null);
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
-  const form = useForm<AccountFormData>({
+  const accountForm = useForm<AccountFormData>({
     resolver: zodResolver(accountFormSchema),
     defaultValues: {
       name: '',
@@ -73,19 +76,33 @@ export default function AccountsPage() {
     },
   });
 
-  const { data: accounts, isLoading } = useQuery<AccountWithStats[]>({
-    queryKey: ['/api/accounts'],
+  const purchaseForm = useForm<PurchaseFormData>({
+    resolver: zodResolver(purchaseFormSchema),
+    defaultValues: {
+      amountRands: 1000,
+      notes: '',
+    },
   });
 
-  const createMutation = useMutation({
+  const { data: accounts, isLoading } = useQuery<AccountSummary[]>({
+    queryKey: ['/api/accounts/summaries'],
+  });
+
+  const { data: purchases, isLoading: purchasesLoading } = useQuery<AccountPurchase[]>({
+    queryKey: ['/api/accounts', selectedAccountId, 'purchases'],
+    enabled: !!selectedAccountId && isHistoryDialogOpen,
+  });
+
+  const createAccountMutation = useMutation({
     mutationFn: async (data: AccountFormData) => {
       const response = await apiRequest('POST', '/api/accounts', data);
       return response.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/accounts'] });
-      setIsDialogOpen(false);
-      form.reset();
+      queryClient.invalidateQueries({ queryKey: ['/api/accounts/summaries'] });
+      setIsAccountDialogOpen(false);
+      accountForm.reset();
       toast({
         title: 'Account created',
         description: 'The bulk buyer account has been created successfully.',
@@ -100,29 +117,72 @@ export default function AccountsPage() {
     },
   });
 
-  const onSubmit = (data: AccountFormData) => {
-    createMutation.mutate(data);
+  const createPurchaseMutation = useMutation({
+    mutationFn: async (data: PurchaseFormData) => {
+      const response = await apiRequest('POST', `/api/accounts/${selectedAccountId}/purchases`, data);
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/accounts'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/accounts/summaries'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/accounts', selectedAccountId, 'purchases'] });
+      setIsPurchaseDialogOpen(false);
+      purchaseForm.reset();
+      toast({
+        title: 'Purchase recorded',
+        description: 'The purchase has been recorded successfully.',
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        variant: 'destructive',
+        title: 'Failed to record purchase',
+        description: error.message,
+      });
+    },
+  });
+
+  const onSubmitAccount = (data: AccountFormData) => {
+    createAccountMutation.mutate(data);
+  };
+
+  const onSubmitPurchase = (data: PurchaseFormData) => {
+    createPurchaseMutation.mutate(data);
   };
 
   const formatCurrency = (value: number) => {
     return `R${value.toLocaleString()}`;
   };
 
-  const totalStats = accounts?.reduce(
-    (acc, account) => ({
-      totalVouchers: acc.totalVouchers + account.totalVouchers,
-      availableValue: acc.availableValue + account.availableValue,
-      accountCount: acc.accountCount + 1,
-    }),
-    { totalVouchers: 0, availableValue: 0, accountCount: 0 }
-  ) || { totalVouchers: 0, availableValue: 0, accountCount: 0 };
+  const openPurchaseDialog = (accountId: string) => {
+    setSelectedAccountId(accountId);
+    purchaseForm.reset({ amountRands: 1000, notes: '' });
+    setIsPurchaseDialogOpen(true);
+  };
 
-  const handleDialogChange = (open: boolean) => {
-    setIsDialogOpen(open);
+  const openHistoryDialog = (accountId: string) => {
+    setSelectedAccountId(accountId);
+    setIsHistoryDialogOpen(true);
+  };
+
+  const handleAccountDialogChange = (open: boolean) => {
+    setIsAccountDialogOpen(open);
     if (!open) {
-      form.reset();
+      accountForm.reset();
     }
   };
+
+  const selectedAccount = accounts?.find(a => a.id === selectedAccountId);
+
+  const totalStats = accounts?.reduce(
+    (acc, account) => ({
+      totalPurchased: acc.totalPurchased + account.totalPurchased,
+      totalRedeemed: acc.totalRedeemed + account.totalRedeemed,
+      remainingBalance: acc.remainingBalance + account.remainingBalance,
+      accountCount: acc.accountCount + 1,
+    }),
+    { totalPurchased: 0, totalRedeemed: 0, remainingBalance: 0, accountCount: 0 }
+  ) || { totalPurchased: 0, totalRedeemed: 0, remainingBalance: 0, accountCount: 0 };
 
   return (
     <div className="flex flex-col gap-6 p-6">
@@ -130,10 +190,10 @@ export default function AccountsPage() {
         <div>
           <h1 className="text-3xl font-bold" data-testid="text-accounts-title">Accounts</h1>
           <p className="text-muted-foreground">
-            Manage bulk buyer accounts and their voucher allocations
+            Manage bulk buyer accounts and track their purchases
           </p>
         </div>
-        <Dialog open={isDialogOpen} onOpenChange={handleDialogChange}>
+        <Dialog open={isAccountDialogOpen} onOpenChange={handleAccountDialogChange}>
           <DialogTrigger asChild>
             <Button data-testid="button-add-account">
               <Plus className="mr-2 h-4 w-4" />
@@ -147,10 +207,10 @@ export default function AccountsPage() {
                 Add a new account for tracking bulk voucher purchases
               </DialogDescription>
             </DialogHeader>
-            <Form {...form}>
-              <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+            <Form {...accountForm}>
+              <form onSubmit={accountForm.handleSubmit(onSubmitAccount)} className="space-y-4">
                 <FormField
-                  control={form.control}
+                  control={accountForm.control}
                   name="name"
                   render={({ field }) => (
                     <FormItem>
@@ -167,7 +227,7 @@ export default function AccountsPage() {
                   )}
                 />
                 <FormField
-                  control={form.control}
+                  control={accountForm.control}
                   name="contactName"
                   render={({ field }) => (
                     <FormItem>
@@ -185,7 +245,7 @@ export default function AccountsPage() {
                 />
                 <div className="grid grid-cols-2 gap-4">
                   <FormField
-                    control={form.control}
+                    control={accountForm.control}
                     name="email"
                     render={({ field }) => (
                       <FormItem>
@@ -203,7 +263,7 @@ export default function AccountsPage() {
                     )}
                   />
                   <FormField
-                    control={form.control}
+                    control={accountForm.control}
                     name="phone"
                     render={({ field }) => (
                       <FormItem>
@@ -221,7 +281,7 @@ export default function AccountsPage() {
                   />
                 </div>
                 <FormField
-                  control={form.control}
+                  control={accountForm.control}
                   name="notes"
                   render={({ field }) => (
                     <FormItem>
@@ -241,13 +301,13 @@ export default function AccountsPage() {
                   <Button
                     type="button"
                     variant="outline"
-                    onClick={() => handleDialogChange(false)}
+                    onClick={() => handleAccountDialogChange(false)}
                     data-testid="button-cancel-account"
                   >
                     Cancel
                   </Button>
-                  <Button type="submit" disabled={createMutation.isPending} data-testid="button-save-account">
-                    {createMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                  <Button type="submit" disabled={createAccountMutation.isPending} data-testid="button-save-account">
+                    {createAccountMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                     Create Account
                   </Button>
                 </DialogFooter>
@@ -257,7 +317,7 @@ export default function AccountsPage() {
         </Dialog>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-3">
+      <div className="grid gap-4 md:grid-cols-4">
         <Card data-testid="card-total-accounts">
           <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Total Accounts</CardTitle>
@@ -271,29 +331,42 @@ export default function AccountsPage() {
           </CardContent>
         </Card>
 
-        <Card data-testid="card-total-vouchers">
+        <Card data-testid="card-total-purchased">
           <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Vouchers</CardTitle>
-            <FileText className="h-4 w-4 text-muted-foreground" />
+            <CardTitle className="text-sm font-medium">Total Purchased</CardTitle>
+            <DollarSign className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold" data-testid="text-total-account-vouchers">
-              {isLoading ? <Skeleton className="h-8 w-16" /> : totalStats.totalVouchers.toLocaleString()}
+            <div className="text-2xl font-bold" data-testid="text-total-purchased">
+              {isLoading ? <Skeleton className="h-8 w-24" /> : formatCurrency(totalStats.totalPurchased)}
             </div>
-            <p className="text-xs text-muted-foreground">Allocated to accounts</p>
+            <p className="text-xs text-muted-foreground">All account purchases</p>
           </CardContent>
         </Card>
 
-        <Card data-testid="card-available-value">
+        <Card data-testid="card-total-redeemed">
           <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Available Value</CardTitle>
+            <CardTitle className="text-sm font-medium">Total Redeemed</CardTitle>
+            <TrendingUp className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold" data-testid="text-total-redeemed">
+              {isLoading ? <Skeleton className="h-8 w-24" /> : formatCurrency(totalStats.totalRedeemed)}
+            </div>
+            <p className="text-xs text-muted-foreground">Vouchers used</p>
+          </CardContent>
+        </Card>
+
+        <Card data-testid="card-remaining-balance">
+          <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Remaining Balance</CardTitle>
             <Badge variant="secondary">ZAR</Badge>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold" data-testid="text-available-account-value">
-              {isLoading ? <Skeleton className="h-8 w-24" /> : formatCurrency(totalStats.availableValue)}
+            <div className="text-2xl font-bold" data-testid="text-remaining-balance">
+              {isLoading ? <Skeleton className="h-8 w-24" /> : formatCurrency(totalStats.remainingBalance)}
             </div>
-            <p className="text-xs text-muted-foreground">In unredeemed vouchers</p>
+            <p className="text-xs text-muted-foreground">Available to redeem</p>
           </CardContent>
         </Card>
       </div>
@@ -305,7 +378,7 @@ export default function AccountsPage() {
             Account List
           </CardTitle>
           <CardDescription>
-            Bulk buyer accounts and their voucher balances
+            Bulk buyer accounts with purchase tracking and balances
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -325,10 +398,10 @@ export default function AccountsPage() {
                 <TableRow>
                   <TableHead>Account Name</TableHead>
                   <TableHead>Contact</TableHead>
-                  <TableHead className="text-right">Total Vouchers</TableHead>
-                  <TableHead className="text-right">Available</TableHead>
+                  <TableHead className="text-right">Purchased</TableHead>
                   <TableHead className="text-right">Redeemed</TableHead>
-                  <TableHead className="text-right">Available Value</TableHead>
+                  <TableHead className="text-right">Balance</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -368,21 +441,39 @@ export default function AccountsPage() {
                         )}
                       </div>
                     </TableCell>
-                    <TableCell className="text-right font-medium" data-testid={`text-total-vouchers-${account.id}`}>
-                      {account.totalVouchers.toLocaleString()}
+                    <TableCell className="text-right font-medium" data-testid={`text-purchased-${account.id}`}>
+                      {formatCurrency(account.totalPurchased)}
+                    </TableCell>
+                    <TableCell className="text-right" data-testid={`text-redeemed-${account.id}`}>
+                      {formatCurrency(account.totalRedeemed)}
                     </TableCell>
                     <TableCell className="text-right">
-                      <Badge variant="outline" className="bg-primary/10 text-primary" data-testid={`badge-available-${account.id}`}>
-                        {account.availableVouchers.toLocaleString()}
+                      <Badge 
+                        variant={account.remainingBalance > 0 ? "default" : "secondary"}
+                        data-testid={`badge-balance-${account.id}`}
+                      >
+                        {formatCurrency(account.remainingBalance)}
                       </Badge>
                     </TableCell>
                     <TableCell className="text-right">
-                      <Badge variant="outline" data-testid={`badge-redeemed-${account.id}`}>
-                        {account.redeemedVouchers.toLocaleString()}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-right font-medium" data-testid={`text-available-value-${account.id}`}>
-                      {formatCurrency(account.availableValue)}
+                      <div className="flex items-center justify-end gap-2">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => openHistoryDialog(account.id)}
+                          data-testid={`button-history-${account.id}`}
+                        >
+                          <History className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          size="sm"
+                          onClick={() => openPurchaseDialog(account.id)}
+                          data-testid={`button-add-purchase-${account.id}`}
+                        >
+                          <Plus className="h-4 w-4" />
+                          Purchase
+                        </Button>
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -391,6 +482,137 @@ export default function AccountsPage() {
           )}
         </CardContent>
       </Card>
+
+      {/* Purchase Dialog */}
+      <Dialog open={isPurchaseDialogOpen} onOpenChange={setIsPurchaseDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Record Purchase</DialogTitle>
+            <DialogDescription>
+              Record a voucher purchase for {selectedAccount?.name}
+            </DialogDescription>
+          </DialogHeader>
+          <Form {...purchaseForm}>
+            <form onSubmit={purchaseForm.handleSubmit(onSubmitPurchase)} className="space-y-4">
+              <FormField
+                control={purchaseForm.control}
+                name="amountRands"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Amount (Rands) *</FormLabel>
+                    <FormControl>
+                      <Input
+                        type="number"
+                        min={50}
+                        step={50}
+                        placeholder="e.g., 1000"
+                        data-testid="input-purchase-amount"
+                        {...field}
+                      />
+                    </FormControl>
+                    <p className="text-xs text-muted-foreground">
+                      = {Math.floor((field.value || 0) / 50)} vouchers at R50 each
+                    </p>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={purchaseForm.control}
+                name="notes"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Notes (optional)</FormLabel>
+                    <FormControl>
+                      <Textarea
+                        placeholder="e.g., Invoice #12345"
+                        data-testid="input-purchase-notes"
+                        {...field}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <DialogFooter>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setIsPurchaseDialogOpen(false)}
+                  data-testid="button-cancel-purchase"
+                >
+                  Cancel
+                </Button>
+                <Button type="submit" disabled={createPurchaseMutation.isPending} data-testid="button-save-purchase">
+                  {createPurchaseMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                  Record Purchase
+                </Button>
+              </DialogFooter>
+            </form>
+          </Form>
+        </DialogContent>
+      </Dialog>
+
+      {/* History Dialog */}
+      <Dialog open={isHistoryDialogOpen} onOpenChange={setIsHistoryDialogOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Purchase History</DialogTitle>
+            <DialogDescription>
+              Purchase history for {selectedAccount?.name}
+            </DialogDescription>
+          </DialogHeader>
+          {purchasesLoading ? (
+            <div className="space-y-3">
+              {Array.from({ length: 3 }).map((_, i) => (
+                <Skeleton key={i} className="h-12 w-full" />
+              ))}
+            </div>
+          ) : purchases?.length === 0 ? (
+            <div className="py-8 text-center text-muted-foreground" data-testid="text-no-purchases">
+              No purchases recorded yet.
+            </div>
+          ) : (
+            <Table data-testid="table-purchases">
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Date</TableHead>
+                  <TableHead className="text-right">Amount</TableHead>
+                  <TableHead className="text-right">Vouchers</TableHead>
+                  <TableHead>Notes</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {purchases?.map((purchase) => (
+                  <TableRow key={purchase.id} data-testid={`row-purchase-${purchase.id}`}>
+                    <TableCell data-testid={`text-purchase-date-${purchase.id}`}>
+                      {format(new Date(purchase.purchaseDate), 'dd MMM yyyy')}
+                    </TableCell>
+                    <TableCell className="text-right font-medium" data-testid={`text-purchase-amount-${purchase.id}`}>
+                      {formatCurrency(purchase.amountCents / 100)}
+                    </TableCell>
+                    <TableCell className="text-right" data-testid={`text-purchase-vouchers-${purchase.id}`}>
+                      {purchase.voucherCount}
+                    </TableCell>
+                    <TableCell className="text-muted-foreground" data-testid={`text-purchase-notes-${purchase.id}`}>
+                      {purchase.notes || '-'}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setIsHistoryDialogOpen(false)}
+              data-testid="button-close-history"
+            >
+              Close
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
