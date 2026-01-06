@@ -1,64 +1,17 @@
 import { useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
-import { Download, FileSpreadsheet, Users, Wallet, History, Receipt, Loader2 } from 'lucide-react';
-
-interface ExportItem {
-  id: string;
-  title: string;
-  description: string;
-  endpoint: string;
-  icon: typeof FileSpreadsheet;
-}
-
-const exports: ExportItem[] = [
-  {
-    id: 'vouchers',
-    title: 'Vouchers',
-    description: 'All vouchers with barcode, status, batch, book number, and redemption details',
-    endpoint: '/api/exports/vouchers',
-    icon: Receipt,
-  },
-  {
-    id: 'accounts',
-    title: 'Accounts',
-    description: 'Bulk buyer accounts with contact info, purchase totals, and balances',
-    endpoint: '/api/exports/accounts',
-    icon: Wallet,
-  },
-  {
-    id: 'purchases',
-    title: 'Purchases',
-    description: 'All account purchase records with amounts, dates, and notes',
-    endpoint: '/api/exports/purchases',
-    icon: FileSpreadsheet,
-  },
-  {
-    id: 'users',
-    title: 'Users',
-    description: 'Staff accounts with email, role, and creation date',
-    endpoint: '/api/exports/users',
-    icon: Users,
-  },
-  {
-    id: 'audit-logs',
-    title: 'Audit Logs',
-    description: 'Complete activity history with timestamps and details',
-    endpoint: '/api/exports/audit-logs',
-    icon: History,
-  },
-];
+import { Download, FileSpreadsheet, Loader2 } from 'lucide-react';
 
 export default function ExportPage() {
-  const [downloading, setDownloading] = useState<string | null>(null);
+  const [downloading, setDownloading] = useState(false);
   const { toast } = useToast();
 
-  const handleDownload = async (exportItem: ExportItem) => {
-    setDownloading(exportItem.id);
+  const handleExportAll = async () => {
+    setDownloading(true);
     try {
-      const response = await fetch(exportItem.endpoint, {
+      const response = await fetch('/api/exports/all', {
         credentials: 'include',
       });
       
@@ -69,7 +22,7 @@ export default function ExportPage() {
       const blob = await response.blob();
       const contentDisposition = response.headers.get('Content-Disposition');
       const filenameMatch = contentDisposition?.match(/filename="(.+)"/);
-      const filename = filenameMatch ? filenameMatch[1] : `${exportItem.id}_export.csv`;
+      const filename = filenameMatch ? filenameMatch[1] : `supersave_export_${new Date().toISOString().split('T')[0]}.txt`;
 
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -82,7 +35,7 @@ export default function ExportPage() {
 
       toast({
         title: 'Export downloaded',
-        description: `${exportItem.title} data has been exported successfully.`,
+        description: 'All data has been exported successfully.',
       });
     } catch (error) {
       toast({
@@ -91,7 +44,7 @@ export default function ExportPage() {
         description: error instanceof Error ? error.message : 'Failed to download export',
       });
     } finally {
-      setDownloading(null);
+      setDownloading(false);
     }
   };
 
@@ -100,76 +53,68 @@ export default function ExportPage() {
       <div className="flex flex-col gap-2">
         <h1 className="text-3xl font-bold" data-testid="text-export-title">Data Export</h1>
         <p className="text-muted-foreground">
-          Download your data as CSV files for backup or analysis in Excel
+          Download all your data for backup or analysis
         </p>
       </div>
 
-      <Card data-testid="card-export-info">
+      <Card data-testid="card-export-main">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <Download className="h-5 w-5" />
-            Manual Backup
+            <FileSpreadsheet className="h-5 w-5" />
+            Complete Data Export
           </CardTitle>
           <CardDescription>
-            Export your data to CSV files that can be opened in Excel or any spreadsheet program.
-            These files provide a human-readable backup of all your voucher management data.
+            Export all vouchers, accounts, purchases, users, and audit logs in one file.
+            The export includes all data formatted for easy reading and can be opened in any text editor or spreadsheet program.
           </CardDescription>
         </CardHeader>
+        <CardContent className="flex flex-col gap-4">
+          <div className="text-sm text-muted-foreground">
+            <p className="font-medium mb-2">This export includes:</p>
+            <ul className="list-disc list-inside space-y-1">
+              <li>All vouchers with barcode, status, batch, and book numbers</li>
+              <li>Bulk buyer accounts with contact info and balances</li>
+              <li>Purchase records with amounts and dates</li>
+              <li>Staff user accounts and roles</li>
+              <li>Complete audit log history</li>
+            </ul>
+          </div>
+          
+          <Button
+            size="lg"
+            onClick={handleExportAll}
+            disabled={downloading}
+            className="w-full sm:w-auto"
+            data-testid="button-export-all"
+          >
+            {downloading ? (
+              <>
+                <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                Exporting...
+              </>
+            ) : (
+              <>
+                <Download className="mr-2 h-5 w-5" />
+                Export Everything
+              </>
+            )}
+          </Button>
+        </CardContent>
       </Card>
-
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-        {exports.map((exportItem) => (
-          <Card key={exportItem.id} data-testid={`card-export-${exportItem.id}`}>
-            <CardHeader>
-              <CardTitle className="flex items-center justify-between gap-2">
-                <div className="flex items-center gap-2">
-                  <exportItem.icon className="h-5 w-5" />
-                  {exportItem.title}
-                </div>
-                <Badge variant="secondary">CSV</Badge>
-              </CardTitle>
-              <CardDescription>{exportItem.description}</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <Button
-                className="w-full"
-                onClick={() => handleDownload(exportItem)}
-                disabled={downloading === exportItem.id}
-                data-testid={`button-export-${exportItem.id}`}
-              >
-                {downloading === exportItem.id ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Downloading...
-                  </>
-                ) : (
-                  <>
-                    <Download className="mr-2 h-4 w-4" />
-                    Download {exportItem.title}
-                  </>
-                )}
-              </Button>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
 
       <Card data-testid="card-export-tips">
         <CardHeader>
-          <CardTitle>Tips for Using Exports</CardTitle>
+          <CardTitle>Tips</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3 text-sm text-muted-foreground">
           <p>
-            <strong>Opening in Excel:</strong> Double-click the downloaded .csv file to open it in Excel.
-            All columns will be properly formatted and ready for analysis.
+            <strong>Regular Backups:</strong> We recommend exporting your data regularly and saving the file to a safe location like OneDrive or Google Drive.
           </p>
           <p>
-            <strong>Currency Values:</strong> All amounts are shown in South African Rands (ZAR).
-            The exports include both the numeric values and formatted currency where applicable.
+            <strong>File Format:</strong> The export is a plain text file with sections for each data type. You can open it in Notepad, Excel, or any text editor.
           </p>
           <p>
-            <strong>Regular Backups:</strong> We recommend downloading exports regularly and storing
-            them in a safe location like OneDrive or Google Drive for data security.
+            <strong>Currency Values:</strong> All amounts are shown in South African Rands (ZAR) with proper formatting.
           </p>
         </CardContent>
       </Card>

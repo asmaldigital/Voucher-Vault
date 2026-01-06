@@ -570,6 +570,17 @@ export async function registerRoutes(
     }
   });
 
+  // Account summaries - MUST be before :id route
+  app.get("/api/accounts/summaries", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const summaries = await storage.getAllAccountSummaries();
+      return res.json(summaries);
+    } catch (error) {
+      console.error("Error fetching account summaries:", error);
+      return res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
   app.get("/api/accounts/:id", requireAuth, async (req: Request, res: Response) => {
     try {
       const account = await storage.getAccount(req.params.id);
@@ -637,17 +648,6 @@ export async function registerRoutes(
       return res.json(data);
     } catch (error) {
       console.error("Error fetching analytics:", error);
-      return res.status(500).json({ error: "Internal server error" });
-    }
-  });
-
-  // Account summaries with purchase tracking
-  app.get("/api/accounts/summaries", requireAuth, async (req: Request, res: Response) => {
-    try {
-      const summaries = await storage.getAllAccountSummaries();
-      return res.json(summaries);
-    } catch (error) {
-      console.error("Error fetching account summaries:", error);
       return res.status(500).json({ error: "Internal server error" });
     }
   });
@@ -771,6 +771,45 @@ export async function registerRoutes(
       return res.send(csv);
     } catch (error) {
       console.error("Error exporting audit logs:", error);
+      return res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  app.get("/api/exports/all", requireAdmin, async (req: Request, res: Response) => {
+    try {
+      const dateStr = new Date().toISOString().split('T')[0];
+      
+      const vouchers = await storage.getAllVouchersForExport();
+      const summaries = await storage.getAllAccountSummaries();
+      const purchases = await storage.getAllAccountPurchasesForExport();
+      const accounts = await storage.getAllAccounts();
+      const accountMap = new Map(accounts.map(a => [a.id, a.name]));
+      const allUsers = await storage.getAllUsers();
+      const logs = await storage.getAllAuditLogsForExport();
+      
+      let combined = `SuperSave Data Export - ${dateStr}\n`;
+      combined += `${'='.repeat(60)}\n\n`;
+      
+      combined += `VOUCHERS\n${'='.repeat(60)}\n`;
+      combined += generateVouchersCsv(vouchers) + '\n\n';
+      
+      combined += `ACCOUNTS\n${'='.repeat(60)}\n`;
+      combined += generateAccountsCsv(summaries) + '\n\n';
+      
+      combined += `PURCHASES\n${'='.repeat(60)}\n`;
+      combined += generatePurchasesCsv(purchases, accountMap) + '\n\n';
+      
+      combined += `USERS\n${'='.repeat(60)}\n`;
+      combined += generateUsersCsv(allUsers) + '\n\n';
+      
+      combined += `AUDIT LOGS\n${'='.repeat(60)}\n`;
+      combined += generateAuditLogsCsv(logs);
+      
+      res.setHeader('Content-Type', 'text/plain');
+      res.setHeader('Content-Disposition', `attachment; filename="supersave_complete_export_${dateStr}.txt"`);
+      return res.send(combined);
+    } catch (error) {
+      console.error("Error exporting all data:", error);
       return res.status(500).json({ error: "Internal server error" });
     }
   });
