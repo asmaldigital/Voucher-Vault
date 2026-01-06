@@ -2,12 +2,18 @@ import {
   users,
   vouchers,
   auditLogs,
+  accounts,
+  passwordResetTokens,
   type User,
   type InsertUser,
   type Voucher,
   type InsertVoucher,
   type AuditLog,
   type InsertAuditLog,
+  type Account,
+  type InsertAccount,
+  type PasswordResetToken,
+  type InsertPasswordResetToken,
   type DashboardStats,
 } from "@shared/schema";
 import { db } from "./db";
@@ -47,6 +53,21 @@ export interface IStorage {
 
   // Dashboard stats
   getDashboardStats(): Promise<DashboardStats>;
+
+  // Account operations
+  getAccount(id: string): Promise<Account | undefined>;
+  getAllAccounts(): Promise<Account[]>;
+  createAccount(account: InsertAccount): Promise<Account>;
+  updateAccount(id: string, account: Partial<InsertAccount>): Promise<Account | undefined>;
+  getAccountStats(accountId: string): Promise<{ totalVouchers: number; availableVouchers: number; redeemedVouchers: number; totalValue: number; availableValue: number }>;
+
+  // Password reset operations
+  createPasswordResetToken(token: InsertPasswordResetToken): Promise<PasswordResetToken>;
+  getPasswordResetToken(token: string): Promise<PasswordResetToken | undefined>;
+  markPasswordResetTokenUsed(token: string): Promise<void>;
+
+  // Analytics
+  getRedemptionsByPeriod(startDate: Date, endDate: Date, groupBy: 'day' | 'week' | 'month'): Promise<{ period: string; count: number; value: number }[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -103,7 +124,8 @@ export class DatabaseStorage implements IStorage {
       conditions.push(
         or(
           like(vouchers.barcode, `%${options.search}%`),
-          like(vouchers.batchNumber, `%${options.search}%`)
+          like(vouchers.batchNumber, `%${options.search}%`),
+          like(vouchers.bookNumber, `%${options.search}%`)
         )
       );
     }
@@ -239,6 +261,101 @@ export class DatabaseStorage implements IStorage {
       totalValue: totalValueResult.sum,
       redeemedValue: redeemedValueResult.sum,
     };
+  }
+
+  // Account operations
+  async getAccount(id: string): Promise<Account | undefined> {
+    const [account] = await db.select().from(accounts).where(eq(accounts.id, id));
+    return account || undefined;
+  }
+
+  async getAllAccounts(): Promise<Account[]> {
+    return db.select().from(accounts).orderBy(desc(accounts.createdAt));
+  }
+
+  async createAccount(account: InsertAccount): Promise<Account> {
+    const [created] = await db.insert(accounts).values(account).returning();
+    return created;
+  }
+
+  async updateAccount(id: string, account: Partial<InsertAccount>): Promise<Account | undefined> {
+    const [updated] = await db.update(accounts).set(account).where(eq(accounts.id, id)).returning();
+    return updated || undefined;
+  }
+
+  async getAccountStats(accountId: string): Promise<{ totalVouchers: number; availableVouchers: number; redeemedVouchers: number; totalValue: number; availableValue: number }> {
+    const [totalResult] = await db
+      .select({ count: sql<number>`count(*)::int`, sum: sql<number>`coalesce(sum(value), 0)::int` })
+      .from(vouchers)
+      .where(eq(vouchers.accountId, accountId));
+
+    const [availableResult] = await db
+      .select({ count: sql<number>`count(*)::int`, sum: sql<number>`coalesce(sum(value), 0)::int` })
+      .from(vouchers)
+      .where(and(eq(vouchers.accountId, accountId), eq(vouchers.status, "available")));
+
+    const [redeemedResult] = await db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(vouchers)
+      .where(and(eq(vouchers.accountId, accountId), eq(vouchers.status, "redeemed")));
+
+    return {
+      totalVouchers: totalResult?.count || 0,
+      availableVouchers: availableResult?.count || 0,
+      redeemedVouchers: redeemedResult?.count || 0,
+      totalValue: totalResult?.sum || 0,
+      availableValue: availableResult?.sum || 0,
+    };
+  }
+
+  // Password reset operations
+  async createPasswordResetToken(token: InsertPasswordResetToken): Promise<PasswordResetToken> {
+    const [created] = await db.insert(passwordResetTokens).values(token).returning();
+    return created;
+  }
+
+  async getPasswordResetToken(token: string): Promise<PasswordResetToken | undefined> {
+    const [result] = await db.select().from(passwordResetTokens).where(eq(passwordResetTokens.token, token));
+    return result || undefined;
+  }
+
+  async markPasswordResetTokenUsed(token: string): Promise<void> {
+    await db.update(passwordResetTokens).set({ used: 1 }).where(eq(passwordResetTokens.token, token));
+  }
+
+  // Analytics
+  async getRedemptionsByPeriod(startDate: Date, endDate: Date, groupBy: 'day' | 'week' | 'month'): Promise<{ period: string; count: number; value: number }[]> {
+    let dateFormat: string;
+    switch (groupBy) {
+      case 'day':
+        dateFormat = 'YYYY-MM-DD';
+        break;
+      case 'week':
+        dateFormat = 'IYYY-IW';
+        break;
+      case 'month':
+        dateFormat = 'YYYY-MM';
+        break;
+    }
+
+    const result = await db
+      .select({
+        period: sql<string>`to_char(${vouchers.redeemedAt}, ${dateFormat})`,
+        count: sql<number>`count(*)::int`,
+        value: sql<number>`coalesce(sum(${vouchers.value}), 0)::int`,
+      })
+      .from(vouchers)
+      .where(
+        and(
+          eq(vouchers.status, "redeemed"),
+          gte(vouchers.redeemedAt, startDate),
+          sql`${vouchers.redeemedAt} <= ${endDate}`
+        )
+      )
+      .groupBy(sql`to_char(${vouchers.redeemedAt}, ${dateFormat})`)
+      .orderBy(sql`to_char(${vouchers.redeemedAt}, ${dateFormat})`);
+
+    return result.filter(r => r.period !== null) as { period: string; count: number; value: number }[];
   }
 }
 

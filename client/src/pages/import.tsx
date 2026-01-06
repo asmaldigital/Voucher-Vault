@@ -20,6 +20,7 @@ import type { ImportResult } from '@shared/schema';
 export default function ImportPage() {
   const [file, setFile] = useState<File | null>(null);
   const [batchNumber, setBatchNumber] = useState('');
+  const [bookNumber, setBookNumber] = useState('');
   const [voucherValue, setVoucherValue] = useState('50');
   const [importing, setImporting] = useState(false);
   const [progress, setProgress] = useState(0);
@@ -108,6 +109,7 @@ export default function ImportPage() {
         body: JSON.stringify({
           barcodes,
           batchNumber: batchNumber.trim(),
+          bookNumber: bookNumber.trim() || undefined,
           value,
         }),
       });
@@ -170,6 +172,7 @@ export default function ImportPage() {
   const handleReset = () => {
     setFile(null);
     setBatchNumber('');
+    setBookNumber('');
     setVoucherValue('50');
     setResult(null);
     setProgress(0);
@@ -262,6 +265,20 @@ export default function ImportPage() {
                 onChange={(e) => setBatchNumber(e.target.value)}
                 data-testid="input-batch-number"
               />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="book">Book Number (1600 vouchers per book)</Label>
+              <Input
+                id="book"
+                placeholder="e.g., BOOK-001"
+                value={bookNumber}
+                onChange={(e) => setBookNumber(e.target.value)}
+                data-testid="input-book-number"
+              />
+              <p className="text-xs text-muted-foreground">
+                Each book contains 1600 vouchers worth R80,000
+              </p>
             </div>
 
             <div className="space-y-2">

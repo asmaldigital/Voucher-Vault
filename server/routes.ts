@@ -1,8 +1,10 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import type { Server } from "http";
 import { storage } from "./storage";
-import { createUserSchema, loginSchema, insertVoucherSchema } from "@shared/schema";
+import { db } from "./db";
+import { createUserSchema, loginSchema, insertVoucherSchema, users } from "@shared/schema";
 import bcrypt from "bcryptjs";
+import { eq } from "drizzle-orm";
 
 function validateStrongPassword(password: string): { isValid: boolean; errors: string[] } {
   const errors: string[] = [];
@@ -321,7 +323,7 @@ export async function registerRoutes(
 
   app.post("/api/vouchers/import", requireAuth, async (req: Request, res: Response) => {
     try {
-      const { barcodes, batchNumber, value } = req.body;
+      const { barcodes, batchNumber, bookNumber, value } = req.body;
 
       if (!barcodes || !Array.isArray(barcodes) || barcodes.length === 0) {
         return res.status(400).json({ error: "Barcodes array is required" });
@@ -349,6 +351,7 @@ export async function registerRoutes(
             value: value || 50,
             status: "available",
             batchNumber,
+            bookNumber: bookNumber || null,
           });
           results.success++;
         } catch (err: any) {
@@ -457,6 +460,174 @@ export async function registerRoutes(
       return res.json(logs);
     } catch (error) {
       console.error("Error fetching reports:", error);
+      return res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  // Accounts routes
+  app.get("/api/accounts", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const accounts = await storage.getAllAccounts();
+      const accountsWithStats = await Promise.all(
+        accounts.map(async (account) => {
+          const stats = await storage.getAccountStats(account.id);
+          return { ...account, ...stats };
+        })
+      );
+      return res.json(accountsWithStats);
+    } catch (error) {
+      console.error("Error fetching accounts:", error);
+      return res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  app.get("/api/accounts/:id", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const account = await storage.getAccount(req.params.id);
+      if (!account) {
+        return res.status(404).json({ error: "Account not found" });
+      }
+      const stats = await storage.getAccountStats(account.id);
+      return res.json({ ...account, ...stats });
+    } catch (error) {
+      console.error("Error fetching account:", error);
+      return res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  app.post("/api/accounts", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const { name, contactName, email, phone, notes } = req.body;
+      if (!name || !name.trim()) {
+        return res.status(400).json({ error: "Account name is required" });
+      }
+      const account = await storage.createAccount({
+        name: name.trim(),
+        contactName: contactName?.trim() || null,
+        email: email?.trim() || null,
+        phone: phone?.trim() || null,
+        notes: notes?.trim() || null,
+        createdBy: req.session.userId,
+      });
+      return res.status(201).json(account);
+    } catch (error) {
+      console.error("Error creating account:", error);
+      return res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  app.patch("/api/accounts/:id", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const { name, contactName, email, phone, notes } = req.body;
+      const account = await storage.updateAccount(req.params.id, {
+        name: name?.trim(),
+        contactName: contactName?.trim() || null,
+        email: email?.trim() || null,
+        phone: phone?.trim() || null,
+        notes: notes?.trim() || null,
+      });
+      if (!account) {
+        return res.status(404).json({ error: "Account not found" });
+      }
+      return res.json(account);
+    } catch (error) {
+      console.error("Error updating account:", error);
+      return res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  // Analytics routes
+  app.get("/api/analytics/redemptions", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const { startDate, endDate, groupBy } = req.query;
+      const start = startDate ? new Date(startDate as string) : new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+      const end = endDate ? new Date(endDate as string) : new Date();
+      const period = (groupBy as 'day' | 'week' | 'month') || 'day';
+      
+      const data = await storage.getRedemptionsByPeriod(start, end, period);
+      return res.json(data);
+    } catch (error) {
+      console.error("Error fetching analytics:", error);
+      return res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  // Password reset routes
+  app.post("/api/auth/forgot-password", async (req: Request, res: Response) => {
+    try {
+      const { email } = req.body;
+      if (!email) {
+        return res.status(400).json({ error: "Email is required" });
+      }
+
+      const user = await storage.getUserByEmail(email);
+      if (!user) {
+        return res.json({ success: true, message: "If an account exists with this email, a reset link will be sent." });
+      }
+
+      const token = require('crypto').randomBytes(32).toString('hex');
+      const expiresAt = new Date(Date.now() + 60 * 60 * 1000);
+
+      await storage.createPasswordResetToken({
+        userId: user.id,
+        token,
+        expiresAt,
+        used: 0,
+      });
+
+      console.log(`Password reset token for ${email}: ${token}`);
+      console.log(`Reset link: /reset-password?token=${token}`);
+
+      return res.json({ 
+        success: true, 
+        message: "If an account exists with this email, a reset link will be sent.",
+        token: process.env.NODE_ENV === 'development' ? token : undefined,
+      });
+    } catch (error) {
+      console.error("Error in forgot password:", error);
+      return res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  app.post("/api/auth/reset-password", async (req: Request, res: Response) => {
+    try {
+      const { token, password } = req.body;
+      if (!token || !password) {
+        return res.status(400).json({ error: "Token and password are required" });
+      }
+
+      const passwordCheck = validateStrongPassword(password);
+      if (!passwordCheck.isValid) {
+        return res.status(400).json({ 
+          error: "Password does not meet security requirements: " + passwordCheck.errors[0]
+        });
+      }
+
+      const resetToken = await storage.getPasswordResetToken(token);
+      if (!resetToken) {
+        return res.status(400).json({ error: "Invalid or expired reset token" });
+      }
+
+      if (resetToken.used === 1) {
+        return res.status(400).json({ error: "This reset token has already been used" });
+      }
+
+      if (new Date() > resetToken.expiresAt) {
+        return res.status(400).json({ error: "Reset token has expired" });
+      }
+
+      const hashedPassword = await bcrypt.hash(password, 10);
+      const user = await storage.getUser(resetToken.userId);
+      if (!user) {
+        return res.status(400).json({ error: "User not found" });
+      }
+
+      await db.update(users).set({ password: hashedPassword }).where(eq(users.id, resetToken.userId));
+      await storage.markPasswordResetTokenUsed(token);
+
+      return res.json({ success: true, message: "Password has been reset successfully" });
+    } catch (error) {
+      console.error("Error resetting password:", error);
       return res.status(500).json({ error: "Internal server error" });
     }
   });
