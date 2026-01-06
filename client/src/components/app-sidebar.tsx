@@ -18,6 +18,8 @@ import {
   Upload,
   FileBarChart,
   Users,
+  TrendingUp,
+  Wallet,
 } from 'lucide-react';
 import { useAuth } from '@/lib/auth-context';
 import supersaveLogo from '@assets/supersave-logo_1767626702003.png';
@@ -51,6 +53,18 @@ const menuItems = [
     title: 'Reports',
     url: '/reports',
     icon: FileBarChart,
+    adminOnly: false,
+  },
+  {
+    title: 'Analytics',
+    url: '/analytics',
+    icon: TrendingUp,
+    adminOnly: false,
+  },
+  {
+    title: 'Accounts',
+    url: '/accounts',
+    icon: Wallet,
     adminOnly: false,
   },
   {

@@ -14,7 +14,11 @@ import ScanPage from "@/pages/scan";
 import VouchersPage from "@/pages/vouchers";
 import ImportPage from "@/pages/import";
 import ReportsPage from "@/pages/reports";
+import AnalyticsPage from "@/pages/analytics";
+import AccountsPage from "@/pages/accounts";
 import UsersPage from "@/pages/users";
+import ForgotPasswordPage from "@/pages/forgot-password";
+import ResetPasswordPage from "@/pages/reset-password";
 import NotFound from "@/pages/not-found";
 
 function AppLayout({ children }: { children: React.ReactNode }) {
@@ -47,6 +51,8 @@ function AuthenticatedRoutes() {
         <Route path="/vouchers" component={VouchersPage} />
         <Route path="/import" component={ImportPage} />
         <Route path="/reports" component={ReportsPage} />
+        <Route path="/analytics" component={AnalyticsPage} />
+        <Route path="/accounts" component={AccountsPage} />
         <Route path="/users" component={UsersPage} />
         <Route component={NotFound} />
       </Switch>
@@ -67,6 +73,14 @@ function Router() {
       return <Redirect to="/" />;
     }
     return <LoginPage />;
+  }
+
+  if (location === "/forgot-password") {
+    return <ForgotPasswordPage />;
+  }
+
+  if (location.startsWith("/reset-password")) {
+    return <ResetPasswordPage />;
   }
 
   return (
