@@ -2,10 +2,98 @@ import type { Express, Request, Response, NextFunction } from "express";
 import type { Server } from "http";
 import { storage } from "./storage";
 import { db } from "./db";
-import { createUserSchema, loginSchema, insertVoucherSchema, users } from "@shared/schema";
+import { createUserSchema, loginSchema, insertVoucherSchema, users, type Voucher, type AccountSummary, type AccountPurchase, type User, type AuditLog } from "@shared/schema";
 import bcrypt from "bcryptjs";
 import { eq } from "drizzle-orm";
 import { Resend } from "resend";
+
+// CSV generation helpers
+function escapeCsvField(value: string | number | null | undefined): string {
+  if (value === null || value === undefined) return '';
+  const str = String(value);
+  if (str.includes(',') || str.includes('"') || str.includes('\n')) {
+    return `"${str.replace(/"/g, '""')}"`;
+  }
+  return str;
+}
+
+function formatDate(date: Date | null | undefined): string {
+  if (!date) return '';
+  return date.toISOString().replace('T', ' ').substring(0, 19);
+}
+
+function formatCurrency(cents: number): string {
+  return `R${(cents / 100).toFixed(2)}`;
+}
+
+function generateVouchersCsv(vouchers: Voucher[]): string {
+  const headers = ['Barcode', 'Value (Rands)', 'Status', 'Batch Number', 'Book Number', 'Account ID', 'Created At', 'Redeemed At', 'Redeemed By'];
+  const rows = vouchers.map(v => [
+    escapeCsvField(v.barcode),
+    v.value,
+    escapeCsvField(v.status),
+    escapeCsvField(v.batchNumber),
+    escapeCsvField(v.bookNumber),
+    escapeCsvField(v.accountId),
+    escapeCsvField(formatDate(v.createdAt)),
+    escapeCsvField(formatDate(v.redeemedAt)),
+    escapeCsvField(v.redeemedByEmail)
+  ].join(','));
+  return [headers.join(','), ...rows].join('\n');
+}
+
+function generateAccountsCsv(accounts: AccountSummary[]): string {
+  const headers = ['Name', 'Contact Name', 'Email', 'Phone', 'Total Purchased (Rands)', 'Total Allocated (Rands)', 'Total Redeemed (Rands)', 'Remaining Balance (Rands)', 'Vouchers Purchased', 'Vouchers Allocated', 'Vouchers Redeemed', 'Notes'];
+  const rows = accounts.map(a => [
+    escapeCsvField(a.name),
+    escapeCsvField(a.contactName),
+    escapeCsvField(a.email),
+    escapeCsvField(a.phone),
+    a.totalPurchased,
+    a.totalAllocated,
+    a.totalRedeemed,
+    a.remainingBalance,
+    a.vouchersPurchased,
+    a.vouchersAllocated,
+    a.vouchersRedeemed,
+    escapeCsvField(a.notes)
+  ].join(','));
+  return [headers.join(','), ...rows].join('\n');
+}
+
+function generatePurchasesCsv(purchases: AccountPurchase[], accountMap: Map<string, string>): string {
+  const headers = ['Account Name', 'Amount (Rands)', 'Voucher Count', 'Purchase Date', 'Notes'];
+  const rows = purchases.map(p => [
+    escapeCsvField(accountMap.get(p.accountId) || 'Unknown'),
+    (p.amountCents / 100).toFixed(2),
+    p.voucherCount,
+    escapeCsvField(formatDate(p.purchaseDate)),
+    escapeCsvField(p.notes)
+  ].join(','));
+  return [headers.join(','), ...rows].join('\n');
+}
+
+function generateUsersCsv(users: User[]): string {
+  const headers = ['Email', 'Role', 'Created At'];
+  const rows = users.map(u => [
+    escapeCsvField(u.email),
+    escapeCsvField(u.role),
+    escapeCsvField(formatDate(u.createdAt))
+  ].join(','));
+  return [headers.join(','), ...rows].join('\n');
+}
+
+function generateAuditLogsCsv(logs: AuditLog[]): string {
+  const headers = ['Action', 'Voucher ID', 'User Email', 'Timestamp', 'Details'];
+  const rows = logs.map(l => [
+    escapeCsvField(l.action),
+    escapeCsvField(l.voucherId),
+    escapeCsvField(l.userEmail),
+    escapeCsvField(formatDate(l.timestamp)),
+    escapeCsvField(l.details ? JSON.stringify(l.details) : '')
+  ].join(','));
+  return [headers.join(','), ...rows].join('\n');
+}
 
 function validateStrongPassword(password: string): { isValid: boolean; errors: string[] } {
   const errors: string[] = [];
@@ -549,6 +637,136 @@ export async function registerRoutes(
       return res.json(data);
     } catch (error) {
       console.error("Error fetching analytics:", error);
+      return res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  // Account summaries with purchase tracking
+  app.get("/api/accounts/summaries", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const summaries = await storage.getAllAccountSummaries();
+      return res.json(summaries);
+    } catch (error) {
+      console.error("Error fetching account summaries:", error);
+      return res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  app.get("/api/accounts/:id/summary", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const summary = await storage.getAccountSummary(req.params.id);
+      if (!summary) {
+        return res.status(404).json({ error: "Account not found" });
+      }
+      return res.json(summary);
+    } catch (error) {
+      console.error("Error fetching account summary:", error);
+      return res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  // Account purchases
+  app.get("/api/accounts/:id/purchases", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const purchases = await storage.getAccountPurchases(req.params.id);
+      return res.json(purchases);
+    } catch (error) {
+      console.error("Error fetching account purchases:", error);
+      return res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  app.post("/api/accounts/:id/purchases", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const { amountRands, notes } = req.body;
+      if (!amountRands || amountRands <= 0) {
+        return res.status(400).json({ error: "Amount in Rands is required and must be positive" });
+      }
+      
+      const amountCents = Math.round(amountRands * 100);
+      const voucherCount = Math.floor(amountRands / 50);
+      
+      const purchase = await storage.createAccountPurchase({
+        accountId: req.params.id,
+        amountCents,
+        voucherCount,
+        unitValueCents: 5000,
+        purchaseDate: new Date(),
+        notes: notes?.trim() || null,
+        createdBy: req.session.userId,
+      });
+      
+      return res.status(201).json(purchase);
+    } catch (error) {
+      console.error("Error creating account purchase:", error);
+      return res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  // Export routes (admin only)
+  app.get("/api/exports/vouchers", requireAdmin, async (req: Request, res: Response) => {
+    try {
+      const vouchers = await storage.getAllVouchersForExport();
+      const csv = generateVouchersCsv(vouchers);
+      res.setHeader('Content-Type', 'text/csv');
+      res.setHeader('Content-Disposition', `attachment; filename="vouchers_${new Date().toISOString().split('T')[0]}.csv"`);
+      return res.send(csv);
+    } catch (error) {
+      console.error("Error exporting vouchers:", error);
+      return res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  app.get("/api/exports/accounts", requireAdmin, async (req: Request, res: Response) => {
+    try {
+      const summaries = await storage.getAllAccountSummaries();
+      const csv = generateAccountsCsv(summaries);
+      res.setHeader('Content-Type', 'text/csv');
+      res.setHeader('Content-Disposition', `attachment; filename="accounts_${new Date().toISOString().split('T')[0]}.csv"`);
+      return res.send(csv);
+    } catch (error) {
+      console.error("Error exporting accounts:", error);
+      return res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  app.get("/api/exports/purchases", requireAdmin, async (req: Request, res: Response) => {
+    try {
+      const purchases = await storage.getAllAccountPurchasesForExport();
+      const accounts = await storage.getAllAccounts();
+      const accountMap = new Map(accounts.map(a => [a.id, a.name]));
+      const csv = generatePurchasesCsv(purchases, accountMap);
+      res.setHeader('Content-Type', 'text/csv');
+      res.setHeader('Content-Disposition', `attachment; filename="purchases_${new Date().toISOString().split('T')[0]}.csv"`);
+      return res.send(csv);
+    } catch (error) {
+      console.error("Error exporting purchases:", error);
+      return res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  app.get("/api/exports/users", requireAdmin, async (req: Request, res: Response) => {
+    try {
+      const users = await storage.getAllUsers();
+      const csv = generateUsersCsv(users);
+      res.setHeader('Content-Type', 'text/csv');
+      res.setHeader('Content-Disposition', `attachment; filename="users_${new Date().toISOString().split('T')[0]}.csv"`);
+      return res.send(csv);
+    } catch (error) {
+      console.error("Error exporting users:", error);
+      return res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  app.get("/api/exports/audit-logs", requireAdmin, async (req: Request, res: Response) => {
+    try {
+      const logs = await storage.getAllAuditLogsForExport();
+      const csv = generateAuditLogsCsv(logs);
+      res.setHeader('Content-Type', 'text/csv');
+      res.setHeader('Content-Disposition', `attachment; filename="audit_logs_${new Date().toISOString().split('T')[0]}.csv"`);
+      return res.send(csv);
+    } catch (error) {
+      console.error("Error exporting audit logs:", error);
       return res.status(500).json({ error: "Internal server error" });
     }
   });
