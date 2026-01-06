@@ -107,7 +107,40 @@ export const accounts = pgTable("accounts", {
 
 export const accountsRelations = relations(accounts, ({ many }) => ({
   vouchers: many(vouchers),
+  purchases: many(accountPurchases),
 }));
+
+// Account purchases table for tracking purchase history
+export const accountPurchases = pgTable("account_purchases", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  accountId: uuid("account_id").notNull().references(() => accounts.id),
+  amountCents: integer("amount_cents").notNull(),
+  voucherCount: integer("voucher_count").notNull(),
+  unitValueCents: integer("unit_value_cents").notNull().default(5000),
+  purchaseDate: timestamp("purchase_date").notNull().defaultNow(),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow(),
+  createdBy: uuid("created_by").references(() => users.id),
+});
+
+export const accountPurchasesRelations = relations(accountPurchases, ({ one }) => ({
+  account: one(accounts, {
+    fields: [accountPurchases.accountId],
+    references: [accounts.id],
+  }),
+  createdByUser: one(users, {
+    fields: [accountPurchases.createdBy],
+    references: [users.id],
+  }),
+}));
+
+export const insertAccountPurchaseSchema = createInsertSchema(accountPurchases).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertAccountPurchase = z.infer<typeof insertAccountPurchaseSchema>;
+export type AccountPurchase = typeof accountPurchases.$inferSelect;
 
 export const insertAccountSchema = createInsertSchema(accounts).omit({
   id: true,
@@ -193,4 +226,15 @@ export interface RedemptionResult {
   voucher?: Voucher;
   redeemedBy?: string;
   redeemedAt?: string;
+}
+
+// Account summary with balance tracking
+export interface AccountSummary extends Account {
+  totalPurchased: number;
+  totalAllocated: number;
+  totalRedeemed: number;
+  remainingBalance: number;
+  vouchersPurchased: number;
+  vouchersAllocated: number;
+  vouchersRedeemed: number;
 }

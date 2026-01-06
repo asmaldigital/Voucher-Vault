@@ -3,6 +3,7 @@ import {
   vouchers,
   auditLogs,
   accounts,
+  accountPurchases,
   passwordResetTokens,
   type User,
   type InsertUser,
@@ -12,6 +13,9 @@ import {
   type InsertAuditLog,
   type Account,
   type InsertAccount,
+  type AccountPurchase,
+  type InsertAccountPurchase,
+  type AccountSummary,
   type PasswordResetToken,
   type InsertPasswordResetToken,
   type DashboardStats,
@@ -60,6 +64,17 @@ export interface IStorage {
   createAccount(account: InsertAccount): Promise<Account>;
   updateAccount(id: string, account: Partial<InsertAccount>): Promise<Account | undefined>;
   getAccountStats(accountId: string): Promise<{ totalVouchers: number; availableVouchers: number; redeemedVouchers: number; totalValue: number; availableValue: number }>;
+  getAccountSummary(accountId: string): Promise<AccountSummary | undefined>;
+  getAllAccountSummaries(): Promise<AccountSummary[]>;
+
+  // Account purchase operations
+  getAccountPurchases(accountId: string): Promise<AccountPurchase[]>;
+  createAccountPurchase(purchase: InsertAccountPurchase): Promise<AccountPurchase>;
+
+  // Export operations
+  getAllVouchersForExport(): Promise<Voucher[]>;
+  getAllAuditLogsForExport(): Promise<AuditLog[]>;
+  getAllAccountPurchasesForExport(): Promise<AccountPurchase[]>;
 
   // Password reset operations
   createPasswordResetToken(token: InsertPasswordResetToken): Promise<PasswordResetToken>;
@@ -306,6 +321,85 @@ export class DatabaseStorage implements IStorage {
       totalValue: totalResult?.sum || 0,
       availableValue: availableResult?.sum || 0,
     };
+  }
+
+  async getAccountSummary(accountId: string): Promise<AccountSummary | undefined> {
+    const account = await this.getAccount(accountId);
+    if (!account) return undefined;
+
+    const [purchaseResult] = await db
+      .select({ 
+        totalAmount: sql<number>`coalesce(sum(amount_cents), 0)::int`,
+        totalVouchers: sql<number>`coalesce(sum(voucher_count), 0)::int`
+      })
+      .from(accountPurchases)
+      .where(eq(accountPurchases.accountId, accountId));
+
+    const [allocatedResult] = await db
+      .select({ 
+        count: sql<number>`count(*)::int`,
+        sum: sql<number>`coalesce(sum(value), 0)::int`
+      })
+      .from(vouchers)
+      .where(eq(vouchers.accountId, accountId));
+
+    const [redeemedResult] = await db
+      .select({ 
+        count: sql<number>`count(*)::int`,
+        sum: sql<number>`coalesce(sum(value), 0)::int`
+      })
+      .from(vouchers)
+      .where(and(eq(vouchers.accountId, accountId), eq(vouchers.status, "redeemed")));
+
+    const totalPurchased = purchaseResult?.totalAmount || 0;
+    const totalAllocated = allocatedResult?.sum || 0;
+    const totalRedeemed = redeemedResult?.sum || 0;
+
+    return {
+      ...account,
+      totalPurchased: totalPurchased / 100,
+      totalAllocated: totalAllocated,
+      totalRedeemed: totalRedeemed,
+      remainingBalance: (totalPurchased / 100) - totalRedeemed,
+      vouchersPurchased: purchaseResult?.totalVouchers || 0,
+      vouchersAllocated: allocatedResult?.count || 0,
+      vouchersRedeemed: redeemedResult?.count || 0,
+    };
+  }
+
+  async getAllAccountSummaries(): Promise<AccountSummary[]> {
+    const allAccounts = await this.getAllAccounts();
+    const summaries: AccountSummary[] = [];
+    for (const account of allAccounts) {
+      const summary = await this.getAccountSummary(account.id);
+      if (summary) summaries.push(summary);
+    }
+    return summaries;
+  }
+
+  // Account purchase operations
+  async getAccountPurchases(accountId: string): Promise<AccountPurchase[]> {
+    return db.select().from(accountPurchases)
+      .where(eq(accountPurchases.accountId, accountId))
+      .orderBy(desc(accountPurchases.purchaseDate));
+  }
+
+  async createAccountPurchase(purchase: InsertAccountPurchase): Promise<AccountPurchase> {
+    const [created] = await db.insert(accountPurchases).values(purchase).returning();
+    return created;
+  }
+
+  // Export operations
+  async getAllVouchersForExport(): Promise<Voucher[]> {
+    return db.select().from(vouchers).orderBy(desc(vouchers.createdAt));
+  }
+
+  async getAllAuditLogsForExport(): Promise<AuditLog[]> {
+    return db.select().from(auditLogs).orderBy(desc(auditLogs.timestamp));
+  }
+
+  async getAllAccountPurchasesForExport(): Promise<AccountPurchase[]> {
+    return db.select().from(accountPurchases).orderBy(desc(accountPurchases.purchaseDate));
   }
 
   // Password reset operations
