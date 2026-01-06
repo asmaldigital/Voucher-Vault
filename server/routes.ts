@@ -822,11 +822,15 @@ export async function registerRoutes(
         return res.status(400).json({ error: "Email is required" });
       }
 
+      // Send email using Resend
+      console.log(`[AUTH] Forgot password request for: ${email}`);
       const user = await storage.getUserByEmail(email);
       if (!user) {
+        console.log(`[AUTH] User not found for email: ${email}`);
         return res.json({ success: true, message: "If an account exists with this email, a reset link will be sent." });
       }
 
+      console.log(`[AUTH] Found user: ${user.id}. Generating token...`);
       const token = require('crypto').randomBytes(32).toString('hex');
       const expiresAt = new Date(Date.now() + 60 * 60 * 1000);
 
@@ -838,15 +842,13 @@ export async function registerRoutes(
       });
 
       const resetLink = `${req.protocol}://${req.get('host')}/reset-password?token=${token}`;
-      console.log(`Password reset token for ${email}: ${token}`);
-      console.log(`Reset link: ${resetLink}`);
+      console.log(`[AUTH] Reset link generated: ${resetLink}`);
 
-      // Send email using Resend
-      console.log("Checking for RESEND_API_KEY...");
       if (process.env.RESEND_API_KEY) {
-        console.log("RESEND_API_KEY found, attempting to send email...");
+        console.log("[AUTH] RESEND_API_KEY found, initializing Resend...");
         const resend = new Resend(process.env.RESEND_API_KEY);
         try {
+          console.log("[AUTH] Attempting to send email via Resend...");
           const { data: emailData, error: emailError } = await resend.emails.send({
             from: 'SuperSave <vouchers@supersave.co.za>',
             to: email,
@@ -870,15 +872,15 @@ export async function registerRoutes(
           });
 
           if (emailError) {
-            console.error("Resend API error:", JSON.stringify(emailError, null, 2));
+            console.error("[AUTH] Resend API error:", JSON.stringify(emailError, null, 2));
           } else {
-            console.log("Password reset email sent successfully. ID:", emailData?.id);
+            console.log("[AUTH] Resend success. ID:", emailData?.id);
           }
         } catch (error) {
-          console.error("Unexpected error sending reset email:", error);
+          console.error("[AUTH] Unexpected error in Resend call:", error);
         }
       } else {
-        console.warn("RESEND_API_KEY NOT FOUND in environment variables.");
+        console.error("[AUTH] RESEND_API_KEY is missing from environment!");
       }
 
       return res.json({ 
