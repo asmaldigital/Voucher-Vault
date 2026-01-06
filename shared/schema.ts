@@ -33,6 +33,8 @@ export const vouchers = pgTable("vouchers", {
   value: integer("value").notNull().default(50),
   status: text("status").notNull().default("available"),
   batchNumber: text("batch_number").notNull(),
+  bookNumber: text("book_number"),
+  accountId: uuid("account_id"),
   createdAt: timestamp("created_at").defaultNow(),
   redeemedAt: timestamp("redeemed_at"),
   redeemedBy: uuid("redeemed_by").references(() => users.id),
@@ -43,6 +45,10 @@ export const vouchersRelations = relations(vouchers, ({ one }) => ({
   redeemedByUser: one(users, {
     fields: [vouchers.redeemedBy],
     references: [users.id],
+  }),
+  account: one(accounts, {
+    fields: [vouchers.accountId],
+    references: [accounts.id],
   }),
 }));
 
@@ -86,6 +92,48 @@ export const insertAuditLogSchema = createInsertSchema(auditLogs).omit({
 
 export type InsertAuditLog = z.infer<typeof insertAuditLogSchema>;
 export type AuditLog = typeof auditLogs.$inferSelect;
+
+// Accounts table for bulk buyers
+export const accounts = pgTable("accounts", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  name: text("name").notNull(),
+  contactName: text("contact_name"),
+  email: text("email"),
+  phone: text("phone"),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow(),
+  createdBy: uuid("created_by").references(() => users.id),
+});
+
+export const accountsRelations = relations(accounts, ({ many }) => ({
+  vouchers: many(vouchers),
+}));
+
+export const insertAccountSchema = createInsertSchema(accounts).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertAccount = z.infer<typeof insertAccountSchema>;
+export type Account = typeof accounts.$inferSelect;
+
+// Password reset tokens table
+export const passwordResetTokens = pgTable("password_reset_tokens", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  userId: uuid("user_id").notNull().references(() => users.id),
+  token: text("token").notNull().unique(),
+  expiresAt: timestamp("expires_at").notNull(),
+  used: integer("used").notNull().default(0),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertPasswordResetTokenSchema = createInsertSchema(passwordResetTokens).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertPasswordResetToken = z.infer<typeof insertPasswordResetTokenSchema>;
+export type PasswordResetToken = typeof passwordResetTokens.$inferSelect;
 
 // Zod schemas for validation
 export const createUserSchema = z.object({
