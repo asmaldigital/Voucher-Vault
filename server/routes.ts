@@ -823,8 +823,10 @@ export async function registerRoutes(
       }
 
       // Send email using Resend
-      console.log(`[AUTH] Forgot password request for: ${email}`);
-      const user = await storage.getUserByEmail(email);
+      const normalizedEmail = email.trim().toLowerCase();
+      console.log(`[AUTH] Forgot password request for: ${normalizedEmail}`);
+      
+      const user = await storage.getUserByEmail(normalizedEmail);
       if (!user) {
         console.log(`[AUTH] User not found for email: ${email}`);
         return res.json({ success: true, message: "If an account exists with this email, a reset link will be sent." });
