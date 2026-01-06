@@ -683,8 +683,12 @@ export async function registerRoutes(
         return res.status(400).json({ error: "Amount in Rands is required and must be positive" });
       }
       
+      if (amountRands % 50 !== 0) {
+        return res.status(400).json({ error: "Amount must be a multiple of R50 (e.g., R50, R100, R150)" });
+      }
+      
       const amountCents = Math.round(amountRands * 100);
-      const voucherCount = Math.floor(amountRands / 50);
+      const voucherCount = amountRands / 50;
       
       const purchase = await storage.createAccountPurchase({
         accountId: req.params.id,

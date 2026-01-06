@@ -30,7 +30,8 @@ A voucher management system for SuperSave, a South African supermarket. The syst
 │   │   │   ├── vouchers.tsx  # Voucher list with filters
 │   │   │   ├── import.tsx    # CSV import
 │   │   │   ├── reports.tsx   # Redemption reports
-│   │   │   └── users.tsx     # User management (admin only)
+│   │   │   ├── users.tsx     # User management (admin only)
+│   │   │   └── export.tsx    # CSV data export (admin only)
 │   │   └── App.tsx
 ├── server/
 │   ├── routes.ts             # API endpoints
@@ -182,6 +183,17 @@ npm run dev
 - View total, available, and redeemed vouchers per account
 - Contact information management (name, email, phone)
 - Summary statistics across all accounts
+- **Purchase Tracking**: Record purchases in Rands (must be multiples of R50)
+- **Balance Display**: Shows purchased amount, redeemed value, and remaining balance
+- **Purchase History**: View all purchases per account with date, amount, and notes
+
+### 11. Data Export (Admin Only)
+- Manual CSV export for all data types
+- Export options: Vouchers, Accounts, Purchases, Users, Audit Logs
+- South African Rand formatting (R prefix, comma separators)
+- Date-stamped filenames for versioning
+- Excel-compatible format for easy analysis
+- Backup alternative to cloud sync (user can save to OneDrive manually)
 
 ### 10. Password Reset
 - Forgot password link on login page

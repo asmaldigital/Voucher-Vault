@@ -51,7 +51,9 @@ const accountFormSchema = z.object({
 type AccountFormData = z.infer<typeof accountFormSchema>;
 
 const purchaseFormSchema = z.object({
-  amountRands: z.coerce.number().min(50, 'Minimum purchase is R50'),
+  amountRands: z.coerce.number()
+    .min(50, 'Minimum purchase is R50')
+    .refine((val) => val % 50 === 0, 'Amount must be a multiple of R50 (e.g., R50, R100, R150)'),
   notes: z.string().optional(),
 });
 
