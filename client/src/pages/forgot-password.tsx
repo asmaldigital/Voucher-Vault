@@ -11,7 +11,7 @@ import { ArrowLeft, Mail, Loader2, CheckCircle2 } from 'lucide-react';
 export default function ForgotPasswordPage() {
   const [email, setEmail] = useState('');
   const [submitted, setSubmitted] = useState(false);
-  const [resetToken, setResetToken] = useState<string | null>(null);
+  const [resetLink, setResetLink] = useState<string | null>(null);
   const { toast } = useToast();
 
   const forgotMutation = useMutation({
@@ -29,8 +29,8 @@ export default function ForgotPasswordPage() {
     },
     onSuccess: (data) => {
       setSubmitted(true);
-      if (data.token) {
-        setResetToken(data.token);
+      if (data.resetLink) {
+        setResetLink(data.resetLink);
       }
     },
     onError: (error: Error) => {
@@ -69,18 +69,18 @@ export default function ForgotPasswordPage() {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            {resetToken && import.meta.env.DEV && (
+            {resetLink && (
               <div className="rounded-md bg-muted p-4">
                 <p className="text-sm text-muted-foreground mb-2">
-                  Development mode: Use this link to reset your password:
+                  Use this link to reset your password:
                 </p>
-                <Link
-                  href={`/reset-password?token=${resetToken}`}
+                <a
+                  href={resetLink}
                   className="text-primary text-sm break-all hover:underline"
                   data-testid="link-reset-password"
                 >
-                  Reset Password Link
-                </Link>
+                  {resetLink}
+                </a>
               </div>
             )}
             <Button asChild variant="outline" className="w-full" data-testid="button-back-to-login">

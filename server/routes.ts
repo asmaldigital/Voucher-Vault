@@ -875,7 +875,7 @@ export async function registerRoutes(
       return res.json({ 
         success: true, 
         message: "If an account exists with this email, a reset link will be sent.",
-        token: process.env.NODE_ENV === 'development' ? token : undefined,
+        resetLink: process.env.NODE_ENV === 'development' ? resetLink : undefined,
       });
     } catch (error) {
       console.error("Error in forgot password:", error);
