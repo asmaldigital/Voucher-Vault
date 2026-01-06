@@ -90,18 +90,18 @@ export default function ResetPasswordPage() {
   if (!token) {
     return (
       <div className="flex min-h-screen items-center justify-center p-4">
-        <Card className="w-full max-w-md">
+        <Card className="w-full max-w-md" data-testid="card-invalid-token">
           <CardHeader className="text-center">
             <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-destructive/10">
               <XCircle className="h-6 w-6 text-destructive" />
             </div>
-            <CardTitle>Invalid Reset Link</CardTitle>
+            <CardTitle data-testid="text-invalid-link-title">Invalid Reset Link</CardTitle>
             <CardDescription>
               This password reset link is invalid or has expired.
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <Button asChild className="w-full">
+            <Button asChild className="w-full" data-testid="button-request-new-reset">
               <Link href="/forgot-password">Request New Reset Link</Link>
             </Button>
           </CardContent>
@@ -113,18 +113,18 @@ export default function ResetPasswordPage() {
   if (success) {
     return (
       <div className="flex min-h-screen items-center justify-center p-4">
-        <Card className="w-full max-w-md">
+        <Card className="w-full max-w-md" data-testid="card-reset-success">
           <CardHeader className="text-center">
             <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-primary/10">
               <CheckCircle2 className="h-6 w-6 text-primary" />
             </div>
-            <CardTitle>Password Reset Successful</CardTitle>
+            <CardTitle data-testid="text-success-title">Password Reset Successful</CardTitle>
             <CardDescription>
               Your password has been reset. You can now log in with your new password.
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <Button asChild className="w-full h-12">
+            <Button asChild className="w-full h-12" data-testid="button-go-to-login">
               <Link href="/login">Go to Login</Link>
             </Button>
           </CardContent>
@@ -135,9 +135,9 @@ export default function ResetPasswordPage() {
 
   return (
     <div className="flex min-h-screen items-center justify-center p-4">
-      <Card className="w-full max-w-md">
+      <Card className="w-full max-w-md" data-testid="card-reset-password">
         <CardHeader className="text-center">
-          <CardTitle>Reset Your Password</CardTitle>
+          <CardTitle data-testid="text-reset-password-title">Reset Your Password</CardTitle>
           <CardDescription>
             Enter your new password below.
           </CardDescription>

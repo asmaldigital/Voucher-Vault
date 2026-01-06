@@ -69,7 +69,7 @@ export default function ForgotPasswordPage() {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            {resetToken && (
+            {resetToken && import.meta.env.DEV && (
               <div className="rounded-md bg-muted p-4">
                 <p className="text-sm text-muted-foreground mb-2">
                   Development mode: Use this link to reset your password:
@@ -77,12 +77,13 @@ export default function ForgotPasswordPage() {
                 <Link
                   href={`/reset-password?token=${resetToken}`}
                   className="text-primary text-sm break-all hover:underline"
+                  data-testid="link-reset-password"
                 >
                   Reset Password Link
                 </Link>
               </div>
             )}
-            <Button asChild variant="outline" className="w-full">
+            <Button asChild variant="outline" className="w-full" data-testid="button-back-to-login">
               <Link href="/login">
                 <ArrowLeft className="mr-2 h-4 w-4" />
                 Back to Login
@@ -96,9 +97,9 @@ export default function ForgotPasswordPage() {
 
   return (
     <div className="flex min-h-screen items-center justify-center p-4">
-      <Card className="w-full max-w-md">
+      <Card className="w-full max-w-md" data-testid="card-forgot-password">
         <CardHeader className="text-center">
-          <CardTitle>Forgot Password</CardTitle>
+          <CardTitle data-testid="text-forgot-password-title">Forgot Password</CardTitle>
           <CardDescription>
             Enter your email address and we'll send you a link to reset your password.
           </CardDescription>
@@ -135,7 +136,7 @@ export default function ForgotPasswordPage() {
                 'Send Reset Link'
               )}
             </Button>
-            <Button asChild variant="ghost" className="w-full">
+            <Button asChild variant="ghost" className="w-full" data-testid="button-back-to-login-form">
               <Link href="/login">
                 <ArrowLeft className="mr-2 h-4 w-4" />
                 Back to Login

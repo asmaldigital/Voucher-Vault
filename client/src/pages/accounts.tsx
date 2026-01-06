@@ -1,12 +1,22 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { z } from 'zod';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from '@/components/ui/form';
 import {
   Dialog,
   DialogContent,
@@ -37,31 +47,45 @@ interface AccountWithStats extends Account {
   availableValue: number;
 }
 
+const accountFormSchema = z.object({
+  name: z.string().min(1, 'Account name is required'),
+  contactName: z.string().optional(),
+  email: z.string().email('Invalid email address').optional().or(z.literal('')),
+  phone: z.string().optional(),
+  notes: z.string().optional(),
+});
+
+type AccountFormData = z.infer<typeof accountFormSchema>;
+
 export default function AccountsPage() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [formData, setFormData] = useState({
-    name: '',
-    contactName: '',
-    email: '',
-    phone: '',
-    notes: '',
-  });
   const { toast } = useToast();
   const queryClient = useQueryClient();
+
+  const form = useForm<AccountFormData>({
+    resolver: zodResolver(accountFormSchema),
+    defaultValues: {
+      name: '',
+      contactName: '',
+      email: '',
+      phone: '',
+      notes: '',
+    },
+  });
 
   const { data: accounts, isLoading } = useQuery<AccountWithStats[]>({
     queryKey: ['/api/accounts'],
   });
 
   const createMutation = useMutation({
-    mutationFn: async (data: typeof formData) => {
+    mutationFn: async (data: AccountFormData) => {
       const response = await apiRequest('POST', '/api/accounts', data);
       return response.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/accounts'] });
       setIsDialogOpen(false);
-      setFormData({ name: '', contactName: '', email: '', phone: '', notes: '' });
+      form.reset();
       toast({
         title: 'Account created',
         description: 'The bulk buyer account has been created successfully.',
@@ -76,17 +100,8 @@ export default function AccountsPage() {
     },
   });
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!formData.name.trim()) {
-      toast({
-        variant: 'destructive',
-        title: 'Error',
-        description: 'Account name is required',
-      });
-      return;
-    }
-    createMutation.mutate(formData);
+  const onSubmit = (data: AccountFormData) => {
+    createMutation.mutate(data);
   };
 
   const formatCurrency = (value: number) => {
@@ -102,16 +117,23 @@ export default function AccountsPage() {
     { totalVouchers: 0, availableValue: 0, accountCount: 0 }
   ) || { totalVouchers: 0, availableValue: 0, accountCount: 0 };
 
+  const handleDialogChange = (open: boolean) => {
+    setIsDialogOpen(open);
+    if (!open) {
+      form.reset();
+    }
+  };
+
   return (
     <div className="flex flex-col gap-6 p-6">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-3xl font-bold">Accounts</h1>
+          <h1 className="text-3xl font-bold" data-testid="text-accounts-title">Accounts</h1>
           <p className="text-muted-foreground">
             Manage bulk buyer accounts and their voucher allocations
           </p>
         </div>
-        <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+        <Dialog open={isDialogOpen} onOpenChange={handleDialogChange}>
           <DialogTrigger asChild>
             <Button data-testid="button-add-account">
               <Plus className="mr-2 h-4 w-4" />
@@ -125,82 +147,118 @@ export default function AccountsPage() {
                 Add a new account for tracking bulk voucher purchases
               </DialogDescription>
             </DialogHeader>
-            <form onSubmit={handleSubmit}>
-              <div className="space-y-4 py-4">
-                <div className="space-y-2">
-                  <Label htmlFor="name">Account Name *</Label>
-                  <Input
-                    id="name"
-                    placeholder="e.g., ABC Corporation"
-                    value={formData.name}
-                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                    data-testid="input-account-name"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="contactName">Contact Person</Label>
-                  <Input
-                    id="contactName"
-                    placeholder="e.g., John Smith"
-                    value={formData.contactName}
-                    onChange={(e) => setFormData({ ...formData, contactName: e.target.value })}
-                    data-testid="input-contact-name"
-                  />
-                </div>
+            <Form {...form}>
+              <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+                <FormField
+                  control={form.control}
+                  name="name"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Account Name *</FormLabel>
+                      <FormControl>
+                        <Input
+                          placeholder="e.g., ABC Corporation"
+                          data-testid="input-account-name"
+                          {...field}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="contactName"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Contact Person</FormLabel>
+                      <FormControl>
+                        <Input
+                          placeholder="e.g., John Smith"
+                          data-testid="input-contact-name"
+                          {...field}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
                 <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="email">Email</Label>
-                    <Input
-                      id="email"
-                      type="email"
-                      placeholder="john@company.co.za"
-                      value={formData.email}
-                      onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                      data-testid="input-account-email"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="phone">Phone</Label>
-                    <Input
-                      id="phone"
-                      placeholder="+27 82 123 4567"
-                      value={formData.phone}
-                      onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                      data-testid="input-account-phone"
-                    />
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="notes">Notes</Label>
-                  <Textarea
-                    id="notes"
-                    placeholder="Any additional information..."
-                    value={formData.notes}
-                    onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-                    data-testid="input-account-notes"
+                  <FormField
+                    control={form.control}
+                    name="email"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Email</FormLabel>
+                        <FormControl>
+                          <Input
+                            type="email"
+                            placeholder="john@company.co.za"
+                            data-testid="input-account-email"
+                            {...field}
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="phone"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Phone</FormLabel>
+                        <FormControl>
+                          <Input
+                            placeholder="+27 82 123 4567"
+                            data-testid="input-account-phone"
+                            {...field}
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
                   />
                 </div>
-              </div>
-              <DialogFooter>
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => setIsDialogOpen(false)}
-                >
-                  Cancel
-                </Button>
-                <Button type="submit" disabled={createMutation.isPending} data-testid="button-save-account">
-                  {createMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                  Create Account
-                </Button>
-              </DialogFooter>
-            </form>
+                <FormField
+                  control={form.control}
+                  name="notes"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Notes</FormLabel>
+                      <FormControl>
+                        <Textarea
+                          placeholder="Any additional information..."
+                          data-testid="input-account-notes"
+                          {...field}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <DialogFooter>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => handleDialogChange(false)}
+                    data-testid="button-cancel-account"
+                  >
+                    Cancel
+                  </Button>
+                  <Button type="submit" disabled={createMutation.isPending} data-testid="button-save-account">
+                    {createMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                    Create Account
+                  </Button>
+                </DialogFooter>
+              </form>
+            </Form>
           </DialogContent>
         </Dialog>
       </div>
 
       <div className="grid gap-4 md:grid-cols-3">
-        <Card>
+        <Card data-testid="card-total-accounts">
           <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Total Accounts</CardTitle>
             <Wallet className="h-4 w-4 text-muted-foreground" />
@@ -213,7 +271,7 @@ export default function AccountsPage() {
           </CardContent>
         </Card>
 
-        <Card>
+        <Card data-testid="card-total-vouchers">
           <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Total Vouchers</CardTitle>
             <FileText className="h-4 w-4 text-muted-foreground" />
@@ -226,7 +284,7 @@ export default function AccountsPage() {
           </CardContent>
         </Card>
 
-        <Card>
+        <Card data-testid="card-available-value">
           <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Available Value</CardTitle>
             <Badge variant="secondary">ZAR</Badge>
@@ -240,7 +298,7 @@ export default function AccountsPage() {
         </Card>
       </div>
 
-      <Card>
+      <Card data-testid="card-account-list">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Wallet className="h-5 w-5" />
@@ -258,11 +316,11 @@ export default function AccountsPage() {
               ))}
             </div>
           ) : accounts?.length === 0 ? (
-            <div className="py-8 text-center text-muted-foreground">
+            <div className="py-8 text-center text-muted-foreground" data-testid="text-no-accounts">
               No accounts yet. Click "Add Account" to create one.
             </div>
           ) : (
-            <Table>
+            <Table data-testid="table-accounts">
               <TableHeader>
                 <TableRow>
                   <TableHead>Account Name</TableHead>
@@ -278,7 +336,9 @@ export default function AccountsPage() {
                   <TableRow key={account.id} data-testid={`row-account-${account.id}`}>
                     <TableCell>
                       <div className="flex flex-col">
-                        <span className="font-medium">{account.name}</span>
+                        <span className="font-medium" data-testid={`text-account-name-${account.id}`}>
+                          {account.name}
+                        </span>
                         {account.notes && (
                           <span className="text-xs text-muted-foreground truncate max-w-[200px]">
                             {account.notes}
@@ -291,37 +351,37 @@ export default function AccountsPage() {
                         {account.contactName && (
                           <div className="flex items-center gap-1 text-sm">
                             <User className="h-3 w-3" />
-                            {account.contactName}
+                            <span data-testid={`text-contact-${account.id}`}>{account.contactName}</span>
                           </div>
                         )}
                         {account.email && (
                           <div className="flex items-center gap-1 text-xs text-muted-foreground">
                             <Mail className="h-3 w-3" />
-                            {account.email}
+                            <span data-testid={`text-email-${account.id}`}>{account.email}</span>
                           </div>
                         )}
                         {account.phone && (
                           <div className="flex items-center gap-1 text-xs text-muted-foreground">
                             <Phone className="h-3 w-3" />
-                            {account.phone}
+                            <span data-testid={`text-phone-${account.id}`}>{account.phone}</span>
                           </div>
                         )}
                       </div>
                     </TableCell>
-                    <TableCell className="text-right font-medium">
+                    <TableCell className="text-right font-medium" data-testid={`text-total-vouchers-${account.id}`}>
                       {account.totalVouchers.toLocaleString()}
                     </TableCell>
                     <TableCell className="text-right">
-                      <Badge variant="outline" className="bg-primary/10 text-primary">
+                      <Badge variant="outline" className="bg-primary/10 text-primary" data-testid={`badge-available-${account.id}`}>
                         {account.availableVouchers.toLocaleString()}
                       </Badge>
                     </TableCell>
                     <TableCell className="text-right">
-                      <Badge variant="outline">
+                      <Badge variant="outline" data-testid={`badge-redeemed-${account.id}`}>
                         {account.redeemedVouchers.toLocaleString()}
                       </Badge>
                     </TableCell>
-                    <TableCell className="text-right font-medium">
+                    <TableCell className="text-right font-medium" data-testid={`text-available-value-${account.id}`}>
                       {formatCurrency(account.availableValue)}
                     </TableCell>
                   </TableRow>

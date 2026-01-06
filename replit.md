@@ -58,10 +58,28 @@ A voucher management system for SuperSave, a South African supermarket. The syst
 - `value` (integer, default 50)
 - `status` (enum: 'available', 'redeemed', 'expired', 'voided')
 - `batchNumber` (string)
+- `bookNumber` (string, nullable) - Book tracking (1600 vouchers per book = R80,000)
+- `accountId` (UUID, nullable) - Reference to bulk buyer account
 - `createdAt` (timestamp)
 - `redeemedAt` (timestamp, nullable)
 - `redeemedBy` (user id, nullable)
 - `redeemedByEmail` (string, nullable)
+
+### accounts table (Bulk Buyers)
+- `id` (UUID, primary key)
+- `name` (string) - Account/company name
+- `contactName` (string, nullable) - Primary contact person
+- `email` (string, nullable)
+- `phone` (string, nullable)
+- `notes` (text, nullable)
+- `createdAt` (timestamp)
+
+### password_reset_tokens table
+- `id` (UUID, primary key)
+- `userId` (UUID, reference to users)
+- `token` (string, unique)
+- `expiresAt` (timestamp)
+- `usedAt` (timestamp, nullable)
 
 ### auditLogs table
 - `id` (UUID, primary key)
@@ -127,12 +145,14 @@ npm run dev
 ### 4. Vouchers List
 - Paginated table view
 - Filter by status
-- Search by barcode or batch
+- Search by barcode, batch, or book number
+- Book number column for tracking voucher books (1600 vouchers = R80,000)
 - Status badges with colors
 
 ### 5. Import
 - CSV file upload (drag & drop)
 - Batch number assignment
+- Book number assignment (optional, for tracking voucher books)
 - Configurable voucher value
 - Progress indicator
 - Import results summary
@@ -149,6 +169,28 @@ npm run dev
 - Assign Admin or Editor roles
 - Role-based sidebar (Users menu only visible to admins)
 
+### 8. Analytics Dashboard
+- Visual charts for redemption trends (Recharts library)
+- Time range selection: 7 days, 30 days, 90 days, 12 months
+- Automatic grouping by day, week, or month based on range
+- Key metrics: total redemptions, value redeemed, daily average, trend %
+- Tab switching between count and value views
+
+### 9. Accounts (Bulk Buyers)
+- Manage ~20 bulk buyer accounts
+- Track voucher allocations per account
+- View total, available, and redeemed vouchers per account
+- Contact information management (name, email, phone)
+- Summary statistics across all accounts
+
+### 10. Password Reset
+- Forgot password link on login page
+- Secure token-based reset flow
+- Tokens expire after 1 hour
+- Single-use tokens (marked as used after reset)
+- Strong password validation during reset
+- Development mode shows reset link (production would send email)
+
 ## Design System
 - Primary color: Lime Green (SuperSave branding - HSL: 80 61% 50%)
 - Secondary color: Red (HSL: 0 100% 50%)
@@ -164,6 +206,8 @@ npm run dev
 - Role-based access control: Admin and Editor roles
 - User management endpoints enforce admin-only access
 - Admin users can void vouchers; editors cannot
+- Strong password requirements: 8+ chars, uppercase, lowercase, number, special character
+- Secure password reset with time-limited tokens
 
 ## User Roles
 - **Admin**: Full access including user management, voiding vouchers
@@ -175,6 +219,8 @@ npm run dev
 - `POST /api/auth/login` - Login with email/password
 - `POST /api/auth/logout` - Logout and clear session
 - `GET /api/auth/me` - Get current user info
+- `POST /api/auth/forgot-password` - Request password reset
+- `POST /api/auth/reset-password` - Reset password with token
 
 ### Users (Admin only)
 - `GET /api/users` - List all users
@@ -190,6 +236,11 @@ npm run dev
 ### Dashboard & Reports
 - `GET /api/dashboard/stats` - Dashboard statistics
 - `GET /api/reports` - Audit logs with date range filter
+- `GET /api/analytics/redemptions` - Redemption data grouped by period
+
+### Accounts
+- `GET /api/accounts` - List all accounts with voucher stats
+- `POST /api/accounts` - Create new bulk buyer account
 
 ### Setup
 - `POST /api/setup` - Create initial admin user (only works when no users exist)
@@ -203,3 +254,8 @@ npm run dev
 - Updated all frontend pages to use new API endpoints
 - Added setup endpoint for creating initial admin user
 - Removed all Supabase dependencies and configuration
+- Added book number tracking to vouchers (1600 per book = R80,000)
+- Created Accounts page for managing bulk buyers
+- Built Analytics dashboard with redemption charts and forecasting
+- Implemented forgot password / reset password functionality
+- Added strong password validation with real-time feedback

@@ -63,20 +63,14 @@ export default function AnalyticsPage() {
 
   const { start, end, period } = getDateRange();
 
+  const queryParams = new URLSearchParams({
+    startDate: start.toISOString(),
+    endDate: end.toISOString(),
+    groupBy: period,
+  }).toString();
+
   const { data: chartData, isLoading } = useQuery<PeriodData[]>({
-    queryKey: ['/api/analytics/redemptions', timeRange, period],
-    queryFn: async () => {
-      const params = new URLSearchParams({
-        startDate: start.toISOString(),
-        endDate: end.toISOString(),
-        groupBy: period,
-      });
-      const response = await fetch(`/api/analytics/redemptions?${params}`, {
-        credentials: 'include',
-      });
-      if (!response.ok) throw new Error('Failed to fetch analytics');
-      return response.json();
-    },
+    queryKey: [`/api/analytics/redemptions?${queryParams}`],
   });
 
   const { data: currentStats } = useQuery({
@@ -124,7 +118,7 @@ export default function AnalyticsPage() {
     <div className="flex flex-col gap-6 p-6">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-3xl font-bold">Analytics</h1>
+          <h1 className="text-3xl font-bold" data-testid="text-analytics-title">Analytics</h1>
           <p className="text-muted-foreground">
             Track redemption trends and forecast performance
           </p>
@@ -135,17 +129,17 @@ export default function AnalyticsPage() {
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="7d">Last 7 days</SelectItem>
-              <SelectItem value="30d">Last 30 days</SelectItem>
-              <SelectItem value="90d">Last 90 days</SelectItem>
-              <SelectItem value="12m">Last 12 months</SelectItem>
+              <SelectItem value="7d" data-testid="option-7d">Last 7 days</SelectItem>
+              <SelectItem value="30d" data-testid="option-30d">Last 30 days</SelectItem>
+              <SelectItem value="90d" data-testid="option-90d">Last 90 days</SelectItem>
+              <SelectItem value="12m" data-testid="option-12m">Last 12 months</SelectItem>
             </SelectContent>
           </Select>
         </div>
       </div>
 
       <div className="grid gap-4 md:grid-cols-4">
-        <Card>
+        <Card data-testid="card-redemptions">
           <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Redemptions</CardTitle>
             <TrendingUp className="h-4 w-4 text-muted-foreground" />
@@ -158,7 +152,7 @@ export default function AnalyticsPage() {
           </CardContent>
         </Card>
 
-        <Card>
+        <Card data-testid="card-value-redeemed">
           <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Value Redeemed</CardTitle>
             <TrendingUp className="h-4 w-4 text-muted-foreground" />
@@ -171,7 +165,7 @@ export default function AnalyticsPage() {
           </CardContent>
         </Card>
 
-        <Card>
+        <Card data-testid="card-daily-average">
           <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Daily Average</CardTitle>
             <Calendar className="h-4 w-4 text-muted-foreground" />
@@ -184,7 +178,7 @@ export default function AnalyticsPage() {
           </CardContent>
         </Card>
 
-        <Card>
+        <Card data-testid="card-trend">
           <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Trend</CardTitle>
             {stats.trend >= 0 ? (
