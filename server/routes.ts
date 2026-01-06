@@ -845,8 +845,8 @@ export async function registerRoutes(
       if (process.env.RESEND_API_KEY) {
         const resend = new Resend(process.env.RESEND_API_KEY);
         try {
-          await resend.emails.send({
-            from: 'SuperSave <onboarding@resend.dev>',
+          const { data: emailData, error: emailError } = await resend.emails.send({
+            from: 'SuperSave <vouchers@supersave.co.za>',
             to: email,
             subject: 'Reset Your SuperSave Password',
             html: `
@@ -866,9 +866,14 @@ export async function registerRoutes(
               </div>
             `,
           });
-          console.log(`Password reset email sent to ${email}`);
-        } catch (emailError) {
-          console.error("Error sending reset email:", emailError);
+
+          if (emailError) {
+            console.error("Resend API error:", emailError);
+          } else {
+            console.log("Password reset email sent successfully:", emailData);
+          }
+        } catch (error) {
+          console.error("Unexpected error sending reset email:", error);
         }
       }
 
