@@ -5,6 +5,7 @@ import { db } from "./db";
 import { createUserSchema, loginSchema, insertVoucherSchema, users } from "@shared/schema";
 import bcrypt from "bcryptjs";
 import { eq } from "drizzle-orm";
+import { Resend } from "resend";
 
 function validateStrongPassword(password: string): { isValid: boolean; errors: string[] } {
   const errors: string[] = [];
@@ -575,8 +576,40 @@ export async function registerRoutes(
         used: 0,
       });
 
+      const resetLink = `${req.protocol}://${req.get('host')}/reset-password?token=${token}`;
       console.log(`Password reset token for ${email}: ${token}`);
-      console.log(`Reset link: /reset-password?token=${token}`);
+      console.log(`Reset link: ${resetLink}`);
+
+      // Send email using Resend
+      if (process.env.RESEND_API_KEY) {
+        const resend = new Resend(process.env.RESEND_API_KEY);
+        try {
+          await resend.emails.send({
+            from: 'SuperSave <onboarding@resend.dev>',
+            to: email,
+            subject: 'Reset Your SuperSave Password',
+            html: `
+              <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+                <h2 style="color: #84cc16;">SuperSave Password Reset</h2>
+                <p>You requested to reset your password. Click the link below to set a new password:</p>
+                <p style="margin: 24px 0;">
+                  <a href="${resetLink}" style="background-color: #84cc16; color: #000; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block;">
+                    Reset Password
+                  </a>
+                </p>
+                <p>Or copy and paste this link into your browser:</p>
+                <p style="color: #666; word-break: break-all;">${resetLink}</p>
+                <p style="color: #999; font-size: 12px; margin-top: 32px;">
+                  This link expires in 1 hour. If you didn't request this, please ignore this email.
+                </p>
+              </div>
+            `,
+          });
+          console.log(`Password reset email sent to ${email}`);
+        } catch (emailError) {
+          console.error("Error sending reset email:", emailError);
+        }
+      }
 
       return res.json({ 
         success: true, 
