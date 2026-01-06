@@ -842,7 +842,9 @@ export async function registerRoutes(
       console.log(`Reset link: ${resetLink}`);
 
       // Send email using Resend
+      console.log("Checking for RESEND_API_KEY...");
       if (process.env.RESEND_API_KEY) {
+        console.log("RESEND_API_KEY found, attempting to send email...");
         const resend = new Resend(process.env.RESEND_API_KEY);
         try {
           const { data: emailData, error: emailError } = await resend.emails.send({
@@ -868,13 +870,15 @@ export async function registerRoutes(
           });
 
           if (emailError) {
-            console.error("Resend API error:", emailError);
+            console.error("Resend API error:", JSON.stringify(emailError, null, 2));
           } else {
-            console.log("Password reset email sent successfully:", emailData);
+            console.log("Password reset email sent successfully. ID:", emailData?.id);
           }
         } catch (error) {
           console.error("Unexpected error sending reset email:", error);
         }
+      } else {
+        console.warn("RESEND_API_KEY NOT FOUND in environment variables.");
       }
 
       return res.json({ 
