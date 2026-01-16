@@ -4,6 +4,7 @@ import {
   auditLogs,
   accounts,
   accountPurchases,
+  accountRedemptions,
   passwordResetTokens,
   type User,
   type InsertUser,
@@ -15,7 +16,10 @@ import {
   type InsertAccount,
   type AccountPurchase,
   type InsertAccountPurchase,
+  type AccountRedemption,
+  type InsertAccountRedemption,
   type AccountSummary,
+  type AccountActivity,
   type PasswordResetToken,
   type InsertPasswordResetToken,
   type DashboardStats,
@@ -28,6 +32,7 @@ export interface IStorage {
   getUser(id: string): Promise<User | undefined>;
   getUserByEmail(email: string): Promise<User | undefined>;
   createUser(user: InsertUser): Promise<User>;
+  deleteUser(id: string): Promise<boolean>;
   getAllUsers(): Promise<User[]>;
 
   // Voucher operations
@@ -71,6 +76,14 @@ export interface IStorage {
   getAccountPurchases(accountId: string): Promise<AccountPurchase[]>;
   createAccountPurchase(purchase: InsertAccountPurchase): Promise<AccountPurchase>;
 
+  // Account redemption operations (manual)
+  getAccountRedemptions(accountId: string): Promise<AccountRedemption[]>;
+  createAccountRedemption(redemption: InsertAccountRedemption): Promise<AccountRedemption>;
+  getAllAccountRedemptionsForExport(): Promise<AccountRedemption[]>;
+  
+  // Account activity
+  getAccountActivity(accountId: string): Promise<AccountActivity[]>;
+
   // Export operations
   getAllVouchersForExport(): Promise<Voucher[]>;
   getAllAuditLogsForExport(): Promise<AuditLog[]>;
@@ -100,6 +113,11 @@ export class DatabaseStorage implements IStorage {
   async createUser(insertUser: InsertUser): Promise<User> {
     const [user] = await db.insert(users).values(insertUser).returning();
     return user;
+  }
+
+  async deleteUser(id: string): Promise<boolean> {
+    const result = await db.delete(users).where(eq(users.id, id));
+    return true;
   }
 
   async getAllUsers(): Promise<User[]> {
@@ -351,17 +369,26 @@ export class DatabaseStorage implements IStorage {
       .from(vouchers)
       .where(and(eq(vouchers.accountId, accountId), eq(vouchers.status, "redeemed")));
 
-    const totalPurchased = purchaseResult?.totalAmount || 0;
+    const [manualRedemptionResult] = await db
+      .select({ 
+        totalAmount: sql<number>`coalesce(sum(amount_cents), 0)::int`
+      })
+      .from(accountRedemptions)
+      .where(eq(accountRedemptions.accountId, accountId));
+
+    const totalReceived = purchaseResult?.totalAmount || 0;
     const totalAllocated = allocatedResult?.sum || 0;
     const totalRedeemed = redeemedResult?.sum || 0;
+    const manualRedemptions = manualRedemptionResult?.totalAmount || 0;
 
     return {
       ...account,
-      totalPurchased: totalPurchased / 100,
+      totalReceived: totalReceived / 100,
       totalAllocated: totalAllocated,
       totalRedeemed: totalRedeemed,
-      remainingBalance: (totalPurchased / 100) - totalRedeemed,
-      vouchersPurchased: purchaseResult?.totalVouchers || 0,
+      manualRedemptions: manualRedemptions / 100,
+      remainingBalance: (totalReceived / 100) - totalRedeemed - (manualRedemptions / 100),
+      vouchersReceived: purchaseResult?.totalVouchers || 0,
       vouchersAllocated: allocatedResult?.count || 0,
       vouchersRedeemed: redeemedResult?.count || 0,
     };
@@ -387,6 +414,73 @@ export class DatabaseStorage implements IStorage {
   async createAccountPurchase(purchase: InsertAccountPurchase): Promise<AccountPurchase> {
     const [created] = await db.insert(accountPurchases).values(purchase).returning();
     return created;
+  }
+
+  // Account redemption operations (manual)
+  async getAccountRedemptions(accountId: string): Promise<AccountRedemption[]> {
+    return db.select().from(accountRedemptions)
+      .where(eq(accountRedemptions.accountId, accountId))
+      .orderBy(desc(accountRedemptions.redemptionDate));
+  }
+
+  async createAccountRedemption(redemption: InsertAccountRedemption): Promise<AccountRedemption> {
+    const [created] = await db.insert(accountRedemptions).values(redemption).returning();
+    return created;
+  }
+
+  async getAllAccountRedemptionsForExport(): Promise<AccountRedemption[]> {
+    return db.select().from(accountRedemptions).orderBy(desc(accountRedemptions.redemptionDate));
+  }
+
+  // Account activity - combines purchases, redemptions, and voucher activity
+  async getAccountActivity(accountId: string): Promise<AccountActivity[]> {
+    const purchases = await this.getAccountPurchases(accountId);
+    const redemptions = await this.getAccountRedemptions(accountId);
+    const voucherRedemptions = await db.select().from(vouchers)
+      .where(and(eq(vouchers.accountId, accountId), eq(vouchers.status, "redeemed")))
+      .orderBy(desc(vouchers.redeemedAt));
+
+    const activities: AccountActivity[] = [];
+
+    for (const p of purchases) {
+      activities.push({
+        id: p.id,
+        type: 'purchase',
+        date: p.purchaseDate,
+        amount: p.amountCents / 100,
+        notes: p.notes,
+        createdBy: p.createdBy,
+        createdByEmail: null,
+      });
+    }
+
+    for (const r of redemptions) {
+      activities.push({
+        id: r.id,
+        type: 'manual_redemption',
+        date: r.redemptionDate,
+        amount: r.amountCents / 100,
+        notes: r.notes,
+        createdBy: r.createdBy,
+        createdByEmail: r.createdByEmail,
+      });
+    }
+
+    for (const v of voucherRedemptions) {
+      if (v.redeemedAt) {
+        activities.push({
+          id: v.id,
+          type: 'redemption',
+          date: v.redeemedAt,
+          amount: v.value,
+          notes: `Voucher ${v.barcode} redeemed`,
+          createdBy: v.redeemedBy,
+          createdByEmail: v.redeemedByEmail,
+        });
+      }
+    }
+
+    return activities.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
   }
 
   // Export operations
