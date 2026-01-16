@@ -2,7 +2,7 @@ import type { Express, Request, Response, NextFunction } from "express";
 import type { Server } from "http";
 import { storage } from "./storage";
 import { db } from "./db";
-import { createUserSchema, loginSchema, insertVoucherSchema, users, type Voucher, type AccountSummary, type AccountPurchase, type User, type AuditLog } from "@shared/schema";
+import { createUserSchema, loginSchema, insertVoucherSchema, users, type Voucher, type AccountSummary, type AccountPurchase, type AccountRedemption, type User, type AuditLog } from "@shared/schema";
 import bcrypt from "bcryptjs";
 import { eq } from "drizzle-orm";
 import { Resend } from "resend";
@@ -43,20 +43,33 @@ function generateVouchersCsv(vouchers: Voucher[]): string {
 }
 
 function generateAccountsCsv(accounts: AccountSummary[]): string {
-  const headers = ['Name', 'Contact Name', 'Email', 'Phone', 'Total Purchased (Rands)', 'Total Allocated (Rands)', 'Total Redeemed (Rands)', 'Remaining Balance (Rands)', 'Vouchers Purchased', 'Vouchers Allocated', 'Vouchers Redeemed', 'Notes'];
+  const headers = ['Name', 'Contact Name', 'Email', 'Phone', 'Total Received (Rands)', 'Total Allocated (Rands)', 'Total Redeemed (Rands)', 'Manual Redemptions (Rands)', 'Remaining Balance (Rands)', 'Vouchers Received', 'Vouchers Allocated', 'Vouchers Redeemed', 'Notes'];
   const rows = accounts.map(a => [
     escapeCsvField(a.name),
     escapeCsvField(a.contactName),
     escapeCsvField(a.email),
     escapeCsvField(a.phone),
-    a.totalPurchased,
+    a.totalReceived,
     a.totalAllocated,
     a.totalRedeemed,
+    a.manualRedemptions,
     a.remainingBalance,
-    a.vouchersPurchased,
+    a.vouchersReceived,
     a.vouchersAllocated,
     a.vouchersRedeemed,
     escapeCsvField(a.notes)
+  ].join(','));
+  return [headers.join(','), ...rows].join('\n');
+}
+
+function generateRedemptionsCsv(redemptions: AccountRedemption[], accountMap: Map<string, string>): string {
+  const headers = ['Account Name', 'Amount (Rands)', 'Redemption Date', 'Notes', 'Recorded By'];
+  const rows = redemptions.map(r => [
+    escapeCsvField(accountMap.get(r.accountId) || 'Unknown'),
+    (r.amountCents / 100).toFixed(2),
+    escapeCsvField(formatDate(r.redemptionDate)),
+    escapeCsvField(r.notes),
+    escapeCsvField(r.createdByEmail)
   ].join(','));
   return [headers.join(','), ...rows].join('\n');
 }
@@ -298,6 +311,27 @@ export async function registerRoutes(
     }
   });
 
+  app.delete("/api/users/:id", requireAdmin, async (req: Request, res: Response) => {
+    try {
+      const userId = req.params.id;
+      
+      if (userId === req.session.userId) {
+        return res.status(400).json({ error: "You cannot delete your own account" });
+      }
+
+      const user = await storage.getUser(userId);
+      if (!user) {
+        return res.status(404).json({ error: "User not found" });
+      }
+
+      await storage.deleteUser(userId);
+      return res.json({ success: true, message: "User deleted successfully" });
+    } catch (error) {
+      console.error("Error deleting user:", error);
+      return res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
   // Dashboard stats
   app.get("/api/dashboard/stats", requireAuth, async (_req: Request, res: Response) => {
     try {
@@ -354,10 +388,12 @@ export async function registerRoutes(
         });
       }
 
+      const bookInfo = voucher.bookNumber ? ` (Book: ${voucher.bookNumber})` : '';
+      
       if (voucher.status === "redeemed") {
         return res.json({
           success: false,
-          message: "This voucher has already been redeemed.",
+          message: `This voucher has already been redeemed${bookInfo}.`,
           voucher,
           redeemedBy: voucher.redeemedByEmail,
           redeemedAt: voucher.redeemedAt?.toISOString(),
@@ -367,14 +403,14 @@ export async function registerRoutes(
       if (voucher.status === "voided") {
         return res.json({
           success: false,
-          message: "This voucher has been voided and cannot be redeemed.",
+          message: `This voucher has been voided and cannot be redeemed${bookInfo}.`,
         });
       }
 
       if (voucher.status === "expired") {
         return res.json({
           success: false,
-          message: "This voucher has expired.",
+          message: `This voucher has expired${bookInfo}.`,
         });
       }
 
@@ -707,13 +743,74 @@ export async function registerRoutes(
     }
   });
 
+  // Account redemptions (manual fund deductions)
+  app.get("/api/accounts/:id/redemptions", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const redemptions = await storage.getAccountRedemptions(req.params.id);
+      return res.json(redemptions);
+    } catch (error) {
+      console.error("Error fetching account redemptions:", error);
+      return res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  app.post("/api/accounts/:id/redemptions", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const { amountRands, notes, redemptionDate, redemptionTime } = req.body;
+      if (!amountRands || amountRands <= 0) {
+        return res.status(400).json({ error: "Amount in Rands is required and must be positive" });
+      }
+
+      const amountCents = Math.round(amountRands * 100);
+      
+      let dateTime = new Date();
+      if (redemptionDate) {
+        dateTime = new Date(redemptionDate);
+        if (redemptionTime) {
+          const [hours, minutes] = redemptionTime.split(':').map(Number);
+          dateTime.setHours(hours, minutes, 0, 0);
+        }
+      }
+
+      const redemption = await storage.createAccountRedemption({
+        accountId: req.params.id,
+        amountCents,
+        redemptionDate: dateTime,
+        notes: notes?.trim() || null,
+        createdBy: req.session.userId,
+        createdByEmail: req.session.userEmail,
+      });
+
+      return res.status(201).json(redemption);
+    } catch (error) {
+      console.error("Error creating account redemption:", error);
+      return res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  // Account activity (combined timeline)
+  app.get("/api/accounts/:id/activity", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const activity = await storage.getAccountActivity(req.params.id);
+      return res.json(activity);
+    } catch (error) {
+      console.error("Error fetching account activity:", error);
+      return res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
   // Export routes (admin only)
   app.get("/api/exports/vouchers", requireAdmin, async (req: Request, res: Response) => {
     try {
-      const vouchers = await storage.getAllVouchersForExport();
+      let vouchers = await storage.getAllVouchersForExport();
+      const bookNumber = req.query.bookNumber as string;
+      if (bookNumber && bookNumber.trim()) {
+        vouchers = vouchers.filter(v => v.bookNumber && v.bookNumber.toLowerCase().includes(bookNumber.toLowerCase()));
+      }
       const csv = generateVouchersCsv(vouchers);
+      const filename = bookNumber ? `vouchers_book_${bookNumber}_${new Date().toISOString().split('T')[0]}.csv` : `vouchers_${new Date().toISOString().split('T')[0]}.csv`;
       res.setHeader('Content-Type', 'text/csv');
-      res.setHeader('Content-Disposition', `attachment; filename="vouchers_${new Date().toISOString().split('T')[0]}.csv"`);
+      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
       return res.send(csv);
     } catch (error) {
       console.error("Error exporting vouchers:", error);
@@ -745,6 +842,21 @@ export async function registerRoutes(
       return res.send(csv);
     } catch (error) {
       console.error("Error exporting purchases:", error);
+      return res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  app.get("/api/exports/redemptions", requireAdmin, async (req: Request, res: Response) => {
+    try {
+      const redemptions = await storage.getAllAccountRedemptionsForExport();
+      const accounts = await storage.getAllAccounts();
+      const accountMap = new Map(accounts.map(a => [a.id, a.name]));
+      const csv = generateRedemptionsCsv(redemptions, accountMap);
+      res.setHeader('Content-Type', 'text/csv');
+      res.setHeader('Content-Disposition', `attachment; filename="manual_redemptions_${new Date().toISOString().split('T')[0]}.csv"`);
+      return res.send(csv);
+    } catch (error) {
+      console.error("Error exporting redemptions:", error);
       return res.status(500).json({ error: "Internal server error" });
     }
   });

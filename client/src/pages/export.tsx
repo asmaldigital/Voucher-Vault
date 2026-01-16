@@ -1,17 +1,27 @@
 import { useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
-import { Download, FileSpreadsheet, Loader2 } from 'lucide-react';
+import { Download, FileSpreadsheet, Loader2, Users, Wallet, Receipt, FileText, BookOpen, MinusCircle } from 'lucide-react';
+
+type ExportType = 'all' | 'vouchers' | 'accounts' | 'purchases' | 'redemptions' | 'users' | 'audit-logs';
 
 export default function ExportPage() {
-  const [downloading, setDownloading] = useState(false);
+  const [downloading, setDownloading] = useState<ExportType | null>(null);
+  const [bookFilter, setBookFilter] = useState('');
   const { toast } = useToast();
 
-  const handleExportAll = async () => {
-    setDownloading(true);
+  const handleExport = async (type: ExportType) => {
+    setDownloading(type);
     try {
-      const response = await fetch('/api/exports/all', {
+      let url = `/api/exports/${type}`;
+      if (type === 'vouchers' && bookFilter.trim()) {
+        url += `?bookNumber=${encodeURIComponent(bookFilter.trim())}`;
+      }
+      
+      const response = await fetch(url, {
         credentials: 'include',
       });
       
@@ -22,20 +32,20 @@ export default function ExportPage() {
       const blob = await response.blob();
       const contentDisposition = response.headers.get('Content-Disposition');
       const filenameMatch = contentDisposition?.match(/filename="(.+)"/);
-      const filename = filenameMatch ? filenameMatch[1] : `supersave_export_${new Date().toISOString().split('T')[0]}.txt`;
+      const filename = filenameMatch ? filenameMatch[1] : `supersave_${type}_${new Date().toISOString().split('T')[0]}.csv`;
 
-      const url = window.URL.createObjectURL(blob);
+      const downloadUrl = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
-      a.href = url;
+      a.href = downloadUrl;
       a.download = filename;
       document.body.appendChild(a);
       a.click();
-      window.URL.revokeObjectURL(url);
+      window.URL.revokeObjectURL(downloadUrl);
       document.body.removeChild(a);
 
       toast({
         title: 'Export downloaded',
-        description: 'All data has been exported successfully.',
+        description: `${type.charAt(0).toUpperCase() + type.slice(1)} data has been exported successfully.`,
       });
     } catch (error) {
       toast({
@@ -44,9 +54,18 @@ export default function ExportPage() {
         description: error instanceof Error ? error.message : 'Failed to download export',
       });
     } finally {
-      setDownloading(false);
+      setDownloading(null);
     }
   };
+
+  const exportOptions = [
+    { type: 'vouchers' as ExportType, label: 'Vouchers', icon: FileSpreadsheet, description: 'All vouchers with barcode, status, and book numbers' },
+    { type: 'accounts' as ExportType, label: 'Accounts', icon: Wallet, description: 'Bulk buyer accounts with balances' },
+    { type: 'purchases' as ExportType, label: 'Purchases', icon: Receipt, description: 'Account purchase records' },
+    { type: 'redemptions' as ExportType, label: 'Manual Redemptions', icon: MinusCircle, description: 'Manual fund deductions from accounts' },
+    { type: 'users' as ExportType, label: 'Users', icon: Users, description: 'Staff accounts and roles' },
+    { type: 'audit-logs' as ExportType, label: 'Audit Logs', icon: FileText, description: 'Complete activity history' },
+  ];
 
   return (
     <div className="flex flex-col gap-6 p-6">
@@ -64,30 +83,18 @@ export default function ExportPage() {
             Complete Data Export
           </CardTitle>
           <CardDescription>
-            Export all vouchers, accounts, purchases, users, and audit logs in one file.
-            The export includes all data formatted for easy reading and can be opened in any text editor or spreadsheet program.
+            Export all data in one file or select individual categories below.
           </CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-4">
-          <div className="text-sm text-muted-foreground">
-            <p className="font-medium mb-2">This export includes:</p>
-            <ul className="list-disc list-inside space-y-1">
-              <li>All vouchers with barcode, status, batch, and book numbers</li>
-              <li>Bulk buyer accounts with contact info and balances</li>
-              <li>Purchase records with amounts and dates</li>
-              <li>Staff user accounts and roles</li>
-              <li>Complete audit log history</li>
-            </ul>
-          </div>
-          
           <Button
             size="lg"
-            onClick={handleExportAll}
-            disabled={downloading}
+            onClick={() => handleExport('all')}
+            disabled={downloading !== null}
             className="w-full sm:w-auto"
             data-testid="button-export-all"
           >
-            {downloading ? (
+            {downloading === 'all' ? (
               <>
                 <Loader2 className="mr-2 h-5 w-5 animate-spin" />
                 Exporting...
@@ -99,6 +106,85 @@ export default function ExportPage() {
               </>
             )}
           </Button>
+        </CardContent>
+      </Card>
+
+      <Card data-testid="card-voucher-export">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <BookOpen className="h-5 w-5" />
+            Voucher Export with Book Filter
+          </CardTitle>
+          <CardDescription>
+            Export vouchers for a specific book number
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-4">
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="book-filter">Book Number (optional)</Label>
+            <div className="flex gap-2">
+              <Input
+                id="book-filter"
+                placeholder="e.g., BOOK-001"
+                value={bookFilter}
+                onChange={(e) => setBookFilter(e.target.value)}
+                className="max-w-xs"
+                data-testid="input-book-filter"
+              />
+              <Button
+                onClick={() => handleExport('vouchers')}
+                disabled={downloading !== null}
+                data-testid="button-export-vouchers"
+              >
+                {downloading === 'vouchers' ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <Download className="mr-2 h-4 w-4" />
+                )}
+                {bookFilter.trim() ? 'Export Book' : 'Export All Vouchers'}
+              </Button>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Leave empty to export all vouchers, or enter a book number to filter
+            </p>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card data-testid="card-individual-exports">
+        <CardHeader>
+          <CardTitle>Individual Exports</CardTitle>
+          <CardDescription>
+            Download specific data categories as CSV files
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {exportOptions.filter(opt => opt.type !== 'vouchers').map((option) => (
+              <div key={option.type} className="flex flex-col gap-2 p-4 border rounded-lg">
+                <div className="flex items-center gap-2">
+                  <option.icon className="h-5 w-5 text-muted-foreground" />
+                  <span className="font-medium">{option.label}</span>
+                </div>
+                <p className="text-xs text-muted-foreground">{option.description}</p>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handleExport(option.type)}
+                  disabled={downloading !== null}
+                  className="mt-2"
+                  data-testid={`button-export-${option.type}`}
+                >
+                  {downloading === option.type ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  ) : (
+                    <Download className="mr-2 h-4 w-4" />
+                  )}
+                  Export
+                </Button>
+              </div>
+            ))}
+          </div>
         </CardContent>
       </Card>
 

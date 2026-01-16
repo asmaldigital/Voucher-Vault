@@ -36,9 +36,9 @@ import {
 } from '@/components/ui/table';
 import { useToast } from '@/hooks/use-toast';
 import { apiRequest } from '@/lib/queryClient';
-import { Wallet, Plus, User, Mail, Phone, FileText, Loader2, DollarSign, TrendingUp, History } from 'lucide-react';
+import { Wallet, Plus, User, Mail, Phone, FileText, Loader2, DollarSign, TrendingUp, History, MinusCircle } from 'lucide-react';
 import { format } from 'date-fns';
-import type { AccountSummary, AccountPurchase } from '@shared/schema';
+import type { AccountSummary, AccountPurchase, AccountActivity } from '@shared/schema';
 
 const accountFormSchema = z.object({
   name: z.string().min(1, 'Account name is required'),
@@ -59,9 +59,19 @@ const purchaseFormSchema = z.object({
 
 type PurchaseFormData = z.infer<typeof purchaseFormSchema>;
 
+const redemptionFormSchema = z.object({
+  amountRands: z.coerce.number().min(1, 'Amount is required'),
+  redemptionDate: z.string().optional(),
+  redemptionTime: z.string().optional(),
+  notes: z.string().optional(),
+});
+
+type RedemptionFormData = z.infer<typeof redemptionFormSchema>;
+
 export default function AccountsPage() {
   const [isAccountDialogOpen, setIsAccountDialogOpen] = useState(false);
   const [isPurchaseDialogOpen, setIsPurchaseDialogOpen] = useState(false);
+  const [isRedemptionDialogOpen, setIsRedemptionDialogOpen] = useState(false);
   const [isHistoryDialogOpen, setIsHistoryDialogOpen] = useState(false);
   const [selectedAccountId, setSelectedAccountId] = useState<string | null>(null);
   const { toast } = useToast();
@@ -86,12 +96,22 @@ export default function AccountsPage() {
     },
   });
 
+  const redemptionForm = useForm<RedemptionFormData>({
+    resolver: zodResolver(redemptionFormSchema),
+    defaultValues: {
+      amountRands: 0,
+      redemptionDate: new Date().toISOString().split('T')[0],
+      redemptionTime: new Date().toTimeString().slice(0, 5),
+      notes: '',
+    },
+  });
+
   const { data: accounts, isLoading } = useQuery<AccountSummary[]>({
     queryKey: ['/api/accounts/summaries'],
   });
 
-  const { data: purchases, isLoading: purchasesLoading } = useQuery<AccountPurchase[]>({
-    queryKey: ['/api/accounts', selectedAccountId, 'purchases'],
+  const { data: activity, isLoading: activityLoading } = useQuery<AccountActivity[]>({
+    queryKey: ['/api/accounts', selectedAccountId, 'activity'],
     enabled: !!selectedAccountId && isHistoryDialogOpen,
   });
 
@@ -131,14 +151,39 @@ export default function AccountsPage() {
       setIsPurchaseDialogOpen(false);
       purchaseForm.reset();
       toast({
-        title: 'Purchase recorded',
-        description: 'The purchase has been recorded successfully.',
+        title: 'Receipt recorded',
+        description: 'The funds received have been recorded successfully.',
       });
     },
     onError: (error: Error) => {
       toast({
         variant: 'destructive',
-        title: 'Failed to record purchase',
+        title: 'Failed to record receipt',
+        description: error.message,
+      });
+    },
+  });
+
+  const createRedemptionMutation = useMutation({
+    mutationFn: async (data: RedemptionFormData) => {
+      const response = await apiRequest('POST', `/api/accounts/${selectedAccountId}/redemptions`, data);
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/accounts'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/accounts/summaries'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/accounts', selectedAccountId, 'activity'] });
+      setIsRedemptionDialogOpen(false);
+      redemptionForm.reset();
+      toast({
+        title: 'Redemption recorded',
+        description: 'The manual redemption has been recorded successfully.',
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        variant: 'destructive',
+        title: 'Failed to record redemption',
         description: error.message,
       });
     },
@@ -152,6 +197,10 @@ export default function AccountsPage() {
     createPurchaseMutation.mutate(data);
   };
 
+  const onSubmitRedemption = (data: RedemptionFormData) => {
+    createRedemptionMutation.mutate(data);
+  };
+
   const formatCurrency = (value: number) => {
     return `R${value.toLocaleString()}`;
   };
@@ -160,6 +209,17 @@ export default function AccountsPage() {
     setSelectedAccountId(accountId);
     purchaseForm.reset({ amountRands: 1000, notes: '' });
     setIsPurchaseDialogOpen(true);
+  };
+
+  const openRedemptionDialog = (accountId: string) => {
+    setSelectedAccountId(accountId);
+    redemptionForm.reset({
+      amountRands: 0,
+      redemptionDate: new Date().toISOString().split('T')[0],
+      redemptionTime: new Date().toTimeString().slice(0, 5),
+      notes: '',
+    });
+    setIsRedemptionDialogOpen(true);
   };
 
   const openHistoryDialog = (accountId: string) => {
@@ -178,13 +238,14 @@ export default function AccountsPage() {
 
   const totalStats = accounts?.reduce(
     (acc, account) => ({
-      totalPurchased: acc.totalPurchased + account.totalPurchased,
+      totalReceived: acc.totalReceived + account.totalReceived,
       totalRedeemed: acc.totalRedeemed + account.totalRedeemed,
+      manualRedemptions: acc.manualRedemptions + account.manualRedemptions,
       remainingBalance: acc.remainingBalance + account.remainingBalance,
       accountCount: acc.accountCount + 1,
     }),
-    { totalPurchased: 0, totalRedeemed: 0, remainingBalance: 0, accountCount: 0 }
-  ) || { totalPurchased: 0, totalRedeemed: 0, remainingBalance: 0, accountCount: 0 };
+    { totalReceived: 0, totalRedeemed: 0, manualRedemptions: 0, remainingBalance: 0, accountCount: 0 }
+  ) || { totalReceived: 0, totalRedeemed: 0, manualRedemptions: 0, remainingBalance: 0, accountCount: 0 };
 
   return (
     <div className="flex flex-col gap-6 p-6">
@@ -192,7 +253,7 @@ export default function AccountsPage() {
         <div>
           <h1 className="text-3xl font-bold" data-testid="text-accounts-title">Accounts</h1>
           <p className="text-muted-foreground">
-            Manage bulk buyer accounts and track their purchases
+            Manage bulk buyer accounts and track their fund receipts
           </p>
         </div>
         <Dialog open={isAccountDialogOpen} onOpenChange={handleAccountDialogChange}>
@@ -206,7 +267,7 @@ export default function AccountsPage() {
             <DialogHeader>
               <DialogTitle>Create Bulk Buyer Account</DialogTitle>
               <DialogDescription>
-                Add a new account for tracking bulk voucher purchases
+                Add a new account for tracking bulk voucher fund receipts
               </DialogDescription>
             </DialogHeader>
             <Form {...accountForm}>
@@ -333,16 +394,16 @@ export default function AccountsPage() {
           </CardContent>
         </Card>
 
-        <Card data-testid="card-total-purchased">
+        <Card data-testid="card-total-received">
           <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Purchased</CardTitle>
+            <CardTitle className="text-sm font-medium">Total Received</CardTitle>
             <DollarSign className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold" data-testid="text-total-purchased">
-              {isLoading ? <Skeleton className="h-8 w-24" /> : formatCurrency(totalStats.totalPurchased)}
+            <div className="text-2xl font-bold" data-testid="text-total-received">
+              {isLoading ? <Skeleton className="h-8 w-24" /> : formatCurrency(totalStats.totalReceived)}
             </div>
-            <p className="text-xs text-muted-foreground">All account purchases</p>
+            <p className="text-xs text-muted-foreground">All account fund receipts</p>
           </CardContent>
         </Card>
 
@@ -380,7 +441,7 @@ export default function AccountsPage() {
             Account List
           </CardTitle>
           <CardDescription>
-            Bulk buyer accounts with purchase tracking and balances
+            Bulk buyer accounts with receipt tracking and balances
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -400,8 +461,8 @@ export default function AccountsPage() {
                 <TableRow>
                   <TableHead>Account Name</TableHead>
                   <TableHead>Contact</TableHead>
-                  <TableHead className="text-right">Purchased</TableHead>
-                  <TableHead className="text-right">Redeemed</TableHead>
+                  <TableHead className="text-right">Received</TableHead>
+                  <TableHead className="text-right">Used</TableHead>
                   <TableHead className="text-right">Balance</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
@@ -444,10 +505,10 @@ export default function AccountsPage() {
                       </div>
                     </TableCell>
                     <TableCell className="text-right font-medium" data-testid={`text-purchased-${account.id}`}>
-                      {formatCurrency(account.totalPurchased)}
+                      {formatCurrency(account.totalReceived)}
                     </TableCell>
                     <TableCell className="text-right" data-testid={`text-redeemed-${account.id}`}>
-                      {formatCurrency(account.totalRedeemed)}
+                      {formatCurrency(account.totalRedeemed + account.manualRedemptions)}
                     </TableCell>
                     <TableCell className="text-right">
                       <Badge 
@@ -469,11 +530,18 @@ export default function AccountsPage() {
                         </Button>
                         <Button
                           size="sm"
+                          variant="outline"
+                          onClick={() => openRedemptionDialog(account.id)}
+                          data-testid={`button-add-redemption-${account.id}`}
+                        >
+                          <MinusCircle className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          size="sm"
                           onClick={() => openPurchaseDialog(account.id)}
                           data-testid={`button-add-purchase-${account.id}`}
                         >
                           <Plus className="h-4 w-4" />
-                          Purchase
                         </Button>
                       </div>
                     </TableCell>
@@ -485,13 +553,13 @@ export default function AccountsPage() {
         </CardContent>
       </Card>
 
-      {/* Purchase Dialog */}
+      {/* Receipt Dialog */}
       <Dialog open={isPurchaseDialogOpen} onOpenChange={setIsPurchaseDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Record Purchase</DialogTitle>
+            <DialogTitle>Record Receipt</DialogTitle>
             <DialogDescription>
-              Record a voucher purchase for {selectedAccount?.name}
+              Record funds received for {selectedAccount?.name}
             </DialogDescription>
           </DialogHeader>
           <Form {...purchaseForm}>
@@ -545,9 +613,9 @@ export default function AccountsPage() {
                 >
                   Cancel
                 </Button>
-                <Button type="submit" disabled={createPurchaseMutation.isPending} data-testid="button-save-purchase">
+                <Button type="submit" disabled={createPurchaseMutation.isPending} data-testid="button-save-receipt">
                   {createPurchaseMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                  Record Purchase
+                  Record Receipt
                 </Button>
               </DialogFooter>
             </form>
@@ -555,54 +623,166 @@ export default function AccountsPage() {
         </DialogContent>
       </Dialog>
 
-      {/* History Dialog */}
+      {/* Redemption Dialog */}
+      <Dialog open={isRedemptionDialogOpen} onOpenChange={setIsRedemptionDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Record Manual Redemption</DialogTitle>
+            <DialogDescription>
+              Deduct funds from {selectedAccount?.name}'s balance
+            </DialogDescription>
+          </DialogHeader>
+          <Form {...redemptionForm}>
+            <form onSubmit={redemptionForm.handleSubmit(onSubmitRedemption)} className="space-y-4">
+              <FormField
+                control={redemptionForm.control}
+                name="amountRands"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Amount (Rands) *</FormLabel>
+                    <FormControl>
+                      <Input
+                        type="number"
+                        min={1}
+                        placeholder="e.g., 500"
+                        data-testid="input-redemption-amount"
+                        {...field}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <div className="grid grid-cols-2 gap-4">
+                <FormField
+                  control={redemptionForm.control}
+                  name="redemptionDate"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Date</FormLabel>
+                      <FormControl>
+                        <Input
+                          type="date"
+                          data-testid="input-redemption-date"
+                          {...field}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={redemptionForm.control}
+                  name="redemptionTime"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Time</FormLabel>
+                      <FormControl>
+                        <Input
+                          type="time"
+                          data-testid="input-redemption-time"
+                          {...field}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+              <FormField
+                control={redemptionForm.control}
+                name="notes"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Notes (optional)</FormLabel>
+                    <FormControl>
+                      <Textarea
+                        placeholder="e.g., Cash withdrawal, Petty cash"
+                        data-testid="input-redemption-notes"
+                        {...field}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <DialogFooter>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setIsRedemptionDialogOpen(false)}
+                  data-testid="button-cancel-redemption"
+                >
+                  Cancel
+                </Button>
+                <Button type="submit" disabled={createRedemptionMutation.isPending} data-testid="button-save-redemption">
+                  {createRedemptionMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                  Record Redemption
+                </Button>
+              </DialogFooter>
+            </form>
+          </Form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Activity History Dialog */}
       <Dialog open={isHistoryDialogOpen} onOpenChange={setIsHistoryDialogOpen}>
         <DialogContent className="max-w-2xl">
           <DialogHeader>
-            <DialogTitle>Purchase History</DialogTitle>
+            <DialogTitle>Account Activity</DialogTitle>
             <DialogDescription>
-              Purchase history for {selectedAccount?.name}
+              Full activity history for {selectedAccount?.name}
             </DialogDescription>
           </DialogHeader>
-          {purchasesLoading ? (
+          {activityLoading ? (
             <div className="space-y-3">
               {Array.from({ length: 3 }).map((_, i) => (
                 <Skeleton key={i} className="h-12 w-full" />
               ))}
             </div>
-          ) : purchases?.length === 0 ? (
-            <div className="py-8 text-center text-muted-foreground" data-testid="text-no-purchases">
-              No purchases recorded yet.
+          ) : activity?.length === 0 ? (
+            <div className="py-8 text-center text-muted-foreground" data-testid="text-no-activity">
+              No activity recorded yet.
             </div>
           ) : (
-            <Table data-testid="table-purchases">
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Date</TableHead>
-                  <TableHead className="text-right">Amount</TableHead>
-                  <TableHead className="text-right">Vouchers</TableHead>
-                  <TableHead>Notes</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {purchases?.map((purchase) => (
-                  <TableRow key={purchase.id} data-testid={`row-purchase-${purchase.id}`}>
-                    <TableCell data-testid={`text-purchase-date-${purchase.id}`}>
-                      {format(new Date(purchase.purchaseDate), 'dd MMM yyyy')}
-                    </TableCell>
-                    <TableCell className="text-right font-medium" data-testid={`text-purchase-amount-${purchase.id}`}>
-                      {formatCurrency(purchase.amountCents / 100)}
-                    </TableCell>
-                    <TableCell className="text-right" data-testid={`text-purchase-vouchers-${purchase.id}`}>
-                      {purchase.voucherCount}
-                    </TableCell>
-                    <TableCell className="text-muted-foreground" data-testid={`text-purchase-notes-${purchase.id}`}>
-                      {purchase.notes || '-'}
-                    </TableCell>
+            <div className="max-h-96 overflow-y-auto">
+              <Table data-testid="table-activity">
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Date</TableHead>
+                    <TableHead>Type</TableHead>
+                    <TableHead className="text-right">Amount</TableHead>
+                    <TableHead>Notes</TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                </TableHeader>
+                <TableBody>
+                  {activity?.map((item) => (
+                    <TableRow key={item.id} data-testid={`row-activity-${item.id}`}>
+                      <TableCell data-testid={`text-activity-date-${item.id}`}>
+                        {format(new Date(item.date), 'dd MMM yyyy HH:mm')}
+                      </TableCell>
+                      <TableCell>
+                        <Badge 
+                          variant={item.type === 'purchase' ? 'default' : item.type === 'manual_redemption' ? 'destructive' : 'secondary'}
+                          data-testid={`badge-activity-type-${item.id}`}
+                        >
+                          {item.type === 'purchase' ? 'Received' : item.type === 'manual_redemption' ? 'Manual Deduct' : 'Voucher Used'}
+                        </Badge>
+                      </TableCell>
+                      <TableCell 
+                        className={`text-right font-medium ${item.type === 'purchase' ? 'text-green-600' : 'text-red-600'}`}
+                        data-testid={`text-activity-amount-${item.id}`}
+                      >
+                        {item.type === 'purchase' ? '+' : '-'}{formatCurrency(item.amount)}
+                      </TableCell>
+                      <TableCell className="text-muted-foreground max-w-[200px] truncate" data-testid={`text-activity-notes-${item.id}`}>
+                        {item.notes || '-'}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
           )}
           <DialogFooter>
             <Button

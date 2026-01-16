@@ -98,7 +98,7 @@ export default function VouchersPage() {
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input
-                placeholder="Search by barcode, batch, or book..."
+                placeholder="Search by barcode or book number..."
                 value={searchQuery}
                 onChange={(e) => {
                   setSearchQuery(e.target.value);
@@ -154,7 +154,6 @@ export default function VouchersPage() {
                       <TableHead className="sticky left-0 bg-background">Barcode</TableHead>
                       <TableHead>Value</TableHead>
                       <TableHead>Status</TableHead>
-                      <TableHead>Batch</TableHead>
                       <TableHead>Book</TableHead>
                       <TableHead>Created</TableHead>
                       <TableHead>Redeemed</TableHead>
@@ -176,7 +175,6 @@ export default function VouchersPage() {
                             {voucher.status}
                           </Badge>
                         </TableCell>
-                        <TableCell>{voucher.batchNumber}</TableCell>
                         <TableCell>{voucher.bookNumber || '-'}</TableCell>
                         <TableCell>{formatDate(voucher.createdAt)}</TableCell>
                         <TableCell>{formatDateTime(voucher.redeemedAt)}</TableCell>
