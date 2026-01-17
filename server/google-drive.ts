@@ -3,7 +3,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { Readable } from 'stream';
 import { db } from './db';
-import { vouchers, users, accounts, accountPurchases, manualRedemptions, auditLogs } from '@shared/schema';
+import { vouchers, users, accounts, accountPurchases, accountRedemptions, auditLogs } from '@shared/schema';
 
 let connectionSettings: any;
 
@@ -95,7 +95,7 @@ export async function runFullBackup() {
       db.select().from(users),
       db.select().from(accounts),
       db.select().from(accountPurchases),
-      db.select().from(manualRedemptions),
+      db.select().from(accountRedemptions),
       db.select().from(auditLogs)
     ]);
 
