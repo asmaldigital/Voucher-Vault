@@ -99,16 +99,6 @@ app.use((req, res, next) => {
 (async () => {
   await registerRoutes(httpServer, app);
 
-  // Run initial backup after server starts
-  setTimeout(async () => {
-    try {
-      console.log("Running scheduled backup to Google Drive...");
-      await runFullBackup();
-    } catch (err) {
-      console.error("Scheduled backup failed:", err);
-    }
-  }, 1000 * 60 * 5); // 5 minutes after startup
-
   // Schedule daily backup
   setInterval(async () => {
     try {
