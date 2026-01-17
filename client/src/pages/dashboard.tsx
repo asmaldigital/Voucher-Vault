@@ -94,7 +94,7 @@ export default function DashboardPage() {
     refetchInterval: 30000,
   });
 
-  const { data: backups = [], isLoading: backupsLoading, refetch: refetchBackups } = useQuery<BackupFile[]>({
+  const { data: backups = [], isLoading: backupsLoading } = useQuery<BackupFile[]>({
     queryKey: ['/api/backup/google-drive/list'],
     enabled: isRestoreOpen && isAdmin,
   });
@@ -256,26 +256,24 @@ export default function DashboardPage() {
         />
       </div>
 
-      <Card>
-        <CardHeader className="flex flex-row items-center justify-between gap-4 space-y-0">
-          <div className="flex flex-col gap-1">
-            <CardTitle className="flex items-center gap-2">
-              <Clock className="h-5 w-5" />
-              Quick Actions
-            </CardTitle>
-            {isAdmin && (
+      {isAdmin && (
+        <Card className="bg-muted/30 border-dashed">
+          <CardHeader className="flex flex-row items-center justify-between gap-4 space-y-0">
+            <div className="flex flex-col gap-1">
+              <CardTitle className="text-lg flex items-center gap-2">
+                <CloudUpload className="h-5 w-5 text-primary" />
+                Google Drive Backup & Restore
+              </CardTitle>
               <CardDescription>
-                System maintenance and backups
+                Securely back up your data or restore from a previous snapshot.
               </CardDescription>
-            )}
-          </div>
-          {isAdmin && (
+            </div>
             <div className="flex gap-2">
               <Dialog open={isRestoreOpen} onOpenChange={setIsRestoreOpen}>
                 <DialogTrigger asChild>
                   <Button variant="outline" size="sm">
                     <History className="mr-2 h-4 w-4" />
-                    Restore
+                    Restore Data
                   </Button>
                 </DialogTrigger>
                 <DialogContent className="max-w-md">
@@ -339,7 +337,7 @@ export default function DashboardPage() {
               </Dialog>
 
               <Button
-                variant="outline"
+                variant="default"
                 size="sm"
                 onClick={() => backupMutation.mutate()}
                 disabled={backupMutation.isPending}
@@ -350,10 +348,19 @@ export default function DashboardPage() {
                 ) : (
                   <CloudUpload className="mr-2 h-4 w-4" />
                 )}
-                Backup
+                Run Backup Now
               </Button>
             </div>
-          )}
+          </CardHeader>
+        </Card>
+      )}
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Clock className="h-5 w-5" />
+            Quick Actions
+          </CardTitle>
         </CardHeader>
         <CardContent>
           <div className="flex flex-wrap gap-3">
