@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { useToast } from '@/hooks/use-toast';
-import { UserPlus, Users, Shield, Edit, CheckCircle2, XCircle, Trash2, Loader2, Github } from 'lucide-react';
+import { UserPlus, Users, Shield, Edit, CheckCircle2, XCircle, Trash2, Loader2 } from 'lucide-react';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import type { User, CreateUser } from '@shared/schema';
 import { Redirect } from 'wouter';
@@ -116,33 +116,6 @@ export default function UsersPage() {
     onError: (error: Error) => {
       toast({
         title: 'Error deleting user',
-        description: error.message,
-        variant: 'destructive',
-      });
-    },
-  });
-
-  const backupMutation = useMutation({
-    mutationFn: async () => {
-      const response = await fetch('/api/github/backup', {
-        method: 'POST',
-        credentials: 'include',
-      });
-      if (!response.ok) {
-        const data = await response.json();
-        throw new Error(data.error || 'Backup failed');
-      }
-      return response.json();
-    },
-    onSuccess: (data) => {
-      toast({
-        title: 'Backup Successful',
-        description: `Backed up ${data.filesBackedUp} files to ${data.owner}/${data.repo}`,
-      });
-    },
-    onError: (error: Error) => {
-      toast({
-        title: 'Backup Failed',
         description: error.message,
         variant: 'destructive',
       });
@@ -311,41 +284,6 @@ export default function UsersPage() {
       </div>
 
       <div className="grid gap-6">
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Github className="h-5 w-5" />
-              GitHub Backup
-            </CardTitle>
-            <CardDescription>
-              Back up your application code to a private GitHub repository
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="flex items-center justify-between">
-              <div className="space-y-1">
-                <p className="text-sm font-medium">Connect to GitHub</p>
-                <p className="text-sm text-muted-foreground">
-                  Sync your source code to a secure, private repository.
-                </p>
-              </div>
-              <Button 
-                variant="outline" 
-                onClick={() => backupMutation.mutate()}
-                disabled={backupMutation.isPending}
-                data-testid="button-github-backup"
-              >
-                {backupMutation.isPending ? (
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                ) : (
-                  <Github className="mr-2 h-4 w-4" />
-                )}
-                Run Backup
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">

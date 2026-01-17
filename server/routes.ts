@@ -6,7 +6,6 @@ import { createUserSchema, loginSchema, insertVoucherSchema, users, type Voucher
 import bcrypt from "bcryptjs";
 import { eq } from "drizzle-orm";
 import { Resend } from "resend";
-import { backupToGithub } from "./github";
 
 // CSV generation helpers
 function escapeCsvField(value: string | number | null | undefined): string {
@@ -158,17 +157,6 @@ export async function registerRoutes(
         database: "disconnected",
         error: error.message 
       });
-    }
-  });
-
-  // GitHub backup endpoint (admin only)
-  app.post("/api/github/backup", requireAdmin, async (req: Request, res: Response) => {
-    try {
-      const result = await backupToGithub("supersave-voucher-backup", true);
-      res.json(result);
-    } catch (error: any) {
-      console.error("GitHub backup error:", error.message);
-      res.status(500).json({ error: error.message });
     }
   });
 
