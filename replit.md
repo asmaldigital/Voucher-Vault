@@ -237,9 +237,11 @@ npm run dev
 ### Users (Admin only)
 - `GET /api/users` - List all users
 - `POST /api/users` - Create new user
+- `DELETE /api/users/:id` - Delete a user (cannot delete self)
 
 ### Vouchers
-- `GET /api/vouchers` - List vouchers with filters
+- `GET /api/vouchers` - List vouchers with filters (supports status, search, accountId)
+- `GET /api/vouchers/books` - Get unique book numbers for filtering
 - `GET /api/vouchers/:barcode` - Get voucher by barcode
 - `POST /api/vouchers/redeem` - Redeem a voucher
 - `POST /api/vouchers/import` - Bulk import vouchers
@@ -248,11 +250,17 @@ npm run dev
 ### Dashboard & Reports
 - `GET /api/dashboard/stats` - Dashboard statistics
 - `GET /api/reports` - Audit logs with date range filter
+- `GET /api/reports/books` - Book statistics (totals per book, outstanding values)
+- `GET /api/reports/books/:bookNumber/redemptions` - Book redemptions by period
 - `GET /api/analytics/redemptions` - Redemption data grouped by period
 
 ### Accounts
 - `GET /api/accounts` - List all accounts with voucher stats
 - `POST /api/accounts` - Create new bulk buyer account
+- `GET /api/accounts/:id/purchases` - Get account purchase history
+- `POST /api/accounts/:id/purchases` - Record a purchase for account
+- `GET /api/accounts/:id/redemptions` - Get account manual redemptions
+- `POST /api/accounts/:id/redemptions` - Record manual fund redemption
 
 ### Setup
 - `POST /api/setup` - Create initial admin user (only works when no users exist)
@@ -271,3 +279,11 @@ npm run dev
 - Built Analytics dashboard with redemption charts and forecasting
 - Implemented forgot password / reset password functionality
 - Added strong password validation with real-time feedback
+- Enhanced Reports page with Book Summary tab showing totals per book and outstanding values
+- Added manual fund redemption feature for accounts with user/date/time tracking
+- Added account filter to Vouchers page
+- Added delete user functionality for admins
+- Changed "Total Purchased" to "Total Received" in Accounts section
+- Fixed Analytics page data loading issue
+- Added book filter to Export page with 5-second auto-refresh
+- Enhanced error messages to show book number when voucher already redeemed
