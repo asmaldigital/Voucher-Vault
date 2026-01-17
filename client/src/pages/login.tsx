@@ -92,7 +92,7 @@ export default function LoginPage() {
                       <FormControl>
                         <Input
                           type="email"
-                          placeholder="staff@supersave.co.za"
+                          placeholder="email@example.com"
                           autoComplete="email"
                           disabled={authLoading}
                           data-testid="input-email"
