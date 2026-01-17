@@ -1,9 +1,9 @@
 import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { useQuery, useMutation } from '@tanstack/react-query';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
-import { Download, FileSpreadsheet, Loader2, Filter } from 'lucide-react';
+import { Download, FileSpreadsheet, Loader2, Filter, CloudUpload, History, RefreshCw } from 'lucide-react';
 import {
   Select,
   SelectContent,
@@ -11,15 +11,89 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { useAuth } from '@/lib/auth-context';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from '@/components/ui/dialog';
+
+interface BackupFile {
+  id: string;
+  name: string;
+  createdTime: string;
+  size?: string;
+}
 
 export default function ExportPage() {
   const [downloading, setDownloading] = useState(false);
   const [selectedBook, setSelectedBook] = useState<string>('all');
+  const [isRestoreOpen, setIsRestoreOpen] = useState(false);
   const { toast } = useToast();
+  const { isAdmin } = useAuth();
 
   const { data: bookNumbers = [], isLoading: booksLoading } = useQuery<string[]>({
     queryKey: ['/api/vouchers/books'],
     refetchInterval: 5000,
+  });
+
+  const { data: backups = [], isLoading: backupsLoading } = useQuery<BackupFile[]>({
+    queryKey: ['/api/backup/google-drive/list'],
+    enabled: isRestoreOpen && isAdmin,
+  });
+
+  const backupMutation = useMutation({
+    mutationFn: async () => {
+      const response = await fetch('/api/backup/google-drive', {
+        method: 'POST',
+        credentials: 'include',
+      });
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || 'Backup failed');
+      }
+      return response.json();
+    },
+    onSuccess: (data) => {
+      toast({
+        title: 'Backup Successful',
+        description: `Successfully backed up data to Google Drive as ${data.fileName}`,
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: 'Backup Failed',
+        description: error.message,
+        variant: 'destructive',
+      });
+    },
+  });
+
+  const restoreMutation = useMutation({
+    mutationFn: async (fileId: string) => {
+      const response = await fetch('/api/backup/google-drive/restore', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ fileId }),
+      });
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || 'Restore failed');
+      }
+      return response.json();
+    },
+    onSuccess: () => {
+      toast({
+        title: 'Restore Successful',
+        description: 'System data has been restored from the backup.',
+      });
+      setIsRestoreOpen(false);
+      window.location.reload();
+    },
+    onError: (error: Error) => {
+      toast({
+        title: 'Restore Failed',
+        description: error.message,
+        variant: 'destructive',
+      });
+    },
   });
 
   const handleExportAll = async () => {
@@ -71,26 +145,128 @@ export default function ExportPage() {
   return (
     <div className="flex flex-col gap-6 p-6">
       <div className="flex flex-col gap-2">
-        <h1 className="text-3xl font-bold" data-testid="text-export-title">Data Export</h1>
+        <h1 className="text-3xl font-bold" data-testid="text-export-title">System Backup</h1>
         <p className="text-muted-foreground">
-          Download all your data for backup or analysis
+          Manage your system data with manual exports and Google Drive integration
         </p>
       </div>
 
-      <Card data-testid="card-export-main">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <FileSpreadsheet className="h-5 w-5" />
-            Data Export
-          </CardTitle>
-          <CardDescription>
-            Export vouchers, accounts, purchases, users, and audit logs.
-            You can filter by book number or export everything.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-4">
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-end">
-            <div className="flex-1 space-y-2">
+      <div className="grid gap-6 md:grid-cols-2">
+        <Card data-testid="card-export-main" className="flex flex-col">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <CloudUpload className="h-5 w-5 text-primary" />
+              Google Drive Cloud Backup
+            </CardTitle>
+            <CardDescription>
+              Securely back up your data or restore from a previous cloud snapshot.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="flex-1">
+            <div className="space-y-4">
+              <div className="p-4 rounded-md bg-muted/50 border space-y-3">
+                <p className="text-sm font-medium">Automatic Cloud Backups</p>
+                <p className="text-sm text-muted-foreground">
+                  The system automatically backs up all data to your "SuperSave Backups" folder daily.
+                </p>
+              </div>
+              <div className="flex flex-col gap-2">
+                <Button
+                  onClick={() => backupMutation.mutate()}
+                  disabled={backupMutation.isPending}
+                  className="w-full"
+                >
+                  {backupMutation.isPending ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  ) : (
+                    <CloudUpload className="mr-2 h-4 w-4" />
+                  )}
+                  Run Backup to Drive Now
+                </Button>
+
+                <Dialog open={isRestoreOpen} onOpenChange={setIsRestoreOpen}>
+                  <DialogTrigger asChild>
+                    <Button variant="outline" className="w-full">
+                      <History className="mr-2 h-4 w-4" />
+                      Restore from Google Drive
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent className="max-w-md">
+                    <DialogHeader>
+                      <DialogTitle>Restore from Google Drive</DialogTitle>
+                      <DialogDescription>
+                        Selecting a backup will OVERWRITE all current system data.
+                      </DialogDescription>
+                    </DialogHeader>
+                    <div className="max-h-[300px] overflow-y-auto py-4">
+                      {backupsLoading ? (
+                        <div className="flex justify-center p-4">
+                          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                        </div>
+                      ) : backups.length === 0 ? (
+                        <div className="text-center text-sm text-muted-foreground p-4">
+                          No backups found in Google Drive
+                        </div>
+                      ) : (
+                        <div className="space-y-2">
+                          {backups.map((backup) => (
+                            <div 
+                              key={backup.id}
+                              className="flex items-center justify-between p-3 rounded-md border bg-muted/50"
+                            >
+                              <div className="flex flex-col gap-0.5">
+                                <span className="text-sm font-medium truncate max-w-[200px]">
+                                  {backup.name}
+                                </span>
+                                <span className="text-xs text-muted-foreground">
+                                  {new Date(backup.createdTime).toLocaleString()}
+                                </span>
+                              </div>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => {
+                                  if (confirm('Are you absolutely sure? This will replace all current data.')) {
+                                    restoreMutation.mutate(backup.id);
+                                  }
+                                }}
+                                disabled={restoreMutation.isPending}
+                              >
+                                {restoreMutation.isPending ? (
+                                  <Loader2 className="h-4 w-4 animate-spin" />
+                                ) : (
+                                  <RefreshCw className="h-4 w-4" />
+                                )}
+                              </Button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                    <DialogFooter>
+                      <Button variant="ghost" onClick={() => setIsRestoreOpen(false)}>
+                        Close
+                      </Button>
+                    </DialogFooter>
+                  </DialogContent>
+                </Dialog>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card data-testid="card-export-local" className="flex flex-col">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <FileSpreadsheet className="h-5 w-5 text-primary" />
+              Manual CSV Export
+            </CardTitle>
+            <CardDescription>
+              Download your data as a local file for Excel or custom reports.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="flex-1 flex flex-col gap-4">
+            <div className="space-y-2">
               <label className="text-sm font-medium flex items-center gap-2">
                 <Filter className="h-4 w-4" />
                 Filter by Book
@@ -113,53 +289,43 @@ export default function ExportPage() {
               )}
             </div>
             
-            <Button
-              size="lg"
-              onClick={handleExportAll}
-              disabled={downloading}
-              className="sm:w-auto"
-              data-testid="button-export-all"
-            >
-              {downloading ? (
-                <>
-                  <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-                  Exporting...
-                </>
-              ) : (
-                <>
-                  <Download className="mr-2 h-5 w-5" />
-                  {selectedBook === 'all' ? 'Export Everything' : `Export Book ${selectedBook}`}
-                </>
-              )}
-            </Button>
-          </div>
-
-          <div className="text-sm text-muted-foreground border-t pt-4">
-            <p className="font-medium mb-2">This export includes:</p>
-            <ul className="list-disc list-inside space-y-1">
-              <li>Vouchers with barcode, status, and book numbers</li>
-              <li>Bulk buyer accounts with contact info and balances</li>
-              <li>Purchase and redemption records with amounts and dates</li>
-              <li>Staff user accounts and roles</li>
-              <li>Complete audit log history</li>
-            </ul>
-          </div>
-        </CardContent>
-      </Card>
+            <div className="mt-auto">
+              <Button
+                onClick={handleExportAll}
+                disabled={downloading}
+                className="w-full"
+                data-testid="button-export-all"
+              >
+                {downloading ? (
+                  <>
+                    <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                    Exporting...
+                  </>
+                ) : (
+                  <>
+                    <Download className="mr-2 h-5 w-5" />
+                    {selectedBook === 'all' ? 'Export to CSV' : `Export Book ${selectedBook}`}
+                  </>
+                )}
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
 
       <Card data-testid="card-export-tips">
         <CardHeader>
-          <CardTitle>Tips</CardTitle>
+          <CardTitle>Backup Information</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3 text-sm text-muted-foreground">
           <p>
-            <strong>Regular Backups:</strong> We recommend exporting your data regularly and saving the file to a safe location like OneDrive or Google Drive.
+            <strong>Cloud Security:</strong> Google Drive backups are encrypted and stored in your private folder. Only admins can access the Restore feature.
           </p>
           <p>
-            <strong>File Format:</strong> The export is a plain text file with sections for each data type. You can open it in Notepad, Excel, or any text editor.
+            <strong>Local Backups:</strong> CSV exports are useful for offline analysis. We recommend storing these files in a secondary location.
           </p>
           <p>
-            <strong>Currency Values:</strong> All amounts are shown in South African Rands (ZAR) with proper formatting.
+            <strong>Data Integrity:</strong> Restoring from a backup will completely replace your current system state. Use with caution.
           </p>
         </CardContent>
       </Card>

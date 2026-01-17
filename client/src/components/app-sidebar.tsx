@@ -21,6 +21,7 @@ import {
   TrendingUp,
   Wallet,
   Download,
+  CloudUpload,
 } from 'lucide-react';
 import { useAuth } from '@/lib/auth-context';
 import supersaveLogo from '@assets/supersave-logo_1767626702003.png';
@@ -75,9 +76,9 @@ const menuItems = [
     adminOnly: true,
   },
   {
-    title: 'Export',
+    title: 'Backup',
     url: '/export',
-    icon: Download,
+    icon: CloudUpload,
     adminOnly: true,
   },
 ];
