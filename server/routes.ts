@@ -922,14 +922,6 @@ export async function registerRoutes(
   app.get("/api/exports/all", requireAdmin, async (req: Request, res: Response) => {
     try {
       const dateStr = new Date().toISOString().split('T')[0];
-      const bookNumber = req.query.bookNumber as string | undefined;
-      
-      let vouchers = await storage.getAllVouchersForExport();
-      
-      // Filter by book number if specified
-      if (bookNumber && bookNumber !== 'all') {
-        vouchers = vouchers.filter(v => v.bookNumber === bookNumber || v.batchNumber === bookNumber);
-      }
       
       const summaries = await storage.getAllAccountSummaries();
       const purchases = await storage.getAllAccountPurchasesForExport();
@@ -937,6 +929,7 @@ export async function registerRoutes(
       const accountMap = new Map(accounts.map(a => [a.id, a.name]));
       const allUsers = await storage.getAllUsers();
       const logs = await storage.getAllAuditLogsForExport();
+      const vouchers = await storage.getAllVouchersForExport();
       
       let combined = `SuperSave Data Export - ${dateStr}\n`;
       combined += `${'='.repeat(60)}\n\n`;

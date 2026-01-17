@@ -1,16 +1,9 @@
 import { useState } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
-import { Download, FileSpreadsheet, Loader2, Filter, CloudUpload, History, RefreshCw } from 'lucide-react';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
+import { Download, FileSpreadsheet, Loader2, CloudUpload, History, RefreshCw } from 'lucide-react';
 import { useAuth } from '@/lib/auth-context';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from '@/components/ui/dialog';
 
@@ -23,15 +16,9 @@ interface BackupFile {
 
 export default function ExportPage() {
   const [downloading, setDownloading] = useState(false);
-  const [selectedBook, setSelectedBook] = useState<string>('all');
   const [isRestoreOpen, setIsRestoreOpen] = useState(false);
   const { toast } = useToast();
   const { isAdmin } = useAuth();
-
-  const { data: bookNumbers = [], isLoading: booksLoading } = useQuery<string[]>({
-    queryKey: ['/api/vouchers/books'],
-    refetchInterval: 5000,
-  });
 
   const { data: backups = [], isLoading: backupsLoading } = useQuery<BackupFile[]>({
     queryKey: ['/api/backup/google-drive/list'],
@@ -99,9 +86,7 @@ export default function ExportPage() {
   const handleExportAll = async () => {
     setDownloading(true);
     try {
-      const url = selectedBook === 'all' 
-        ? '/api/exports/all' 
-        : `/api/exports/all?bookNumber=${encodeURIComponent(selectedBook)}`;
+      const url = '/api/exports/all';
       
       const response = await fetch(url, {
         credentials: 'include',
@@ -114,7 +99,7 @@ export default function ExportPage() {
       const blob = await response.blob();
       const contentDisposition = response.headers.get('Content-Disposition');
       const filenameMatch = contentDisposition?.match(/filename="(.+)"/);
-      const filename = filenameMatch ? filenameMatch[1] : `supersave_export_${new Date().toISOString().split('T')[0]}.txt`;
+      const filename = filenameMatch ? filenameMatch[1] : `supersave_full_export_${new Date().toISOString().split('T')[0]}.txt`;
 
       const url2 = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -127,9 +112,7 @@ export default function ExportPage() {
 
       toast({
         title: 'Export downloaded',
-        description: selectedBook === 'all' 
-          ? 'All data has been exported successfully.'
-          : `Data for book ${selectedBook} has been exported successfully.`,
+        description: 'All system data has been exported successfully.',
       });
     } catch (error) {
       toast({
@@ -262,31 +245,15 @@ export default function ExportPage() {
               Manual CSV Export
             </CardTitle>
             <CardDescription>
-              Download your data as a local file for Excel or custom reports.
+              Download a single file containing all system data (vouchers, accounts, and audit logs).
             </CardDescription>
           </CardHeader>
           <CardContent className="flex-1 flex flex-col gap-4">
-            <div className="space-y-2">
-              <label className="text-sm font-medium flex items-center gap-2">
-                <Filter className="h-4 w-4" />
-                Filter by Book
-              </label>
-              <Select value={selectedBook} onValueChange={setSelectedBook}>
-                <SelectTrigger className="w-full" data-testid="select-book-filter">
-                  <SelectValue placeholder="Select a book..." />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Books</SelectItem>
-                  {bookNumbers.map((book) => (
-                    <SelectItem key={book} value={book}>
-                      {book}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {booksLoading && (
-                <p className="text-xs text-muted-foreground">Loading books...</p>
-              )}
+            <div className="p-4 rounded-md bg-muted/50 border space-y-2">
+              <p className="text-sm font-medium">Complete Data Export</p>
+              <p className="text-sm text-muted-foreground">
+                This will generate a comprehensive report including every record in the system across all voucher books and accounts.
+              </p>
             </div>
             
             <div className="mt-auto">
@@ -304,7 +271,7 @@ export default function ExportPage() {
                 ) : (
                   <>
                     <Download className="mr-2 h-5 w-5" />
-                    {selectedBook === 'all' ? 'Export to CSV' : `Export Book ${selectedBook}`}
+                    Export Complete System Data
                   </>
                 )}
               </Button>
