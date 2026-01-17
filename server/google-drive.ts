@@ -114,18 +114,57 @@ export async function runFullBackup() {
     stream.push(buffer);
     stream.push(null);
 
-    await drive.files.create({
-      requestBody: {
-        name: backupName,
-        parents: [folderId],
-      },
-      media: {
-        mimeType: 'application/json',
-        body: stream,
-      },
-    });
+    // Helper to escape CSV fields
+    const escapeCsv = (val: any) => {
+      if (val === null || val === undefined) return '';
+      const str = String(val);
+      if (str.includes(',') || str.includes('"') || str.includes('\n')) {
+        return `"${str.replace(/"/g, '""')}"`;
+      }
+      return str;
+    };
 
-    console.log(`Successfully backed up everything to Google Drive: ${backupName}`);
+    // Generate CSV content for Vouchers (most important table)
+    const csvHeaders = ['Barcode', 'Value', 'Status', 'Batch', 'Book', 'RedeemedAt', 'RedeemedByEmail'].join(',');
+    const csvRows = allVouchers.map(v => [
+      escapeCsv(v.barcode),
+      v.value,
+      escapeCsv(v.status),
+      escapeCsv(v.batchNumber),
+      escapeCsv(v.bookNumber),
+      escapeCsv(v.redeemedAt?.toISOString()),
+      escapeCsv(v.redeemedByEmail)
+    ].join(','));
+    const csvContent = [csvHeaders, ...csvRows].join('\n');
+    const csvBuffer = Buffer.from(csvContent);
+    const csvStream = new Readable();
+    csvStream.push(csvBuffer);
+    csvStream.push(null);
+
+    await Promise.all([
+      drive.files.create({
+        requestBody: {
+          name: backupName,
+          parents: [folderId],
+        },
+        media: {
+          mimeType: 'application/json',
+          body: stream,
+        },
+      }),
+      drive.files.create({
+        requestBody: {
+          name: backupName.replace('.json', '.csv'),
+          parents: [folderId],
+        },
+        media: {
+          mimeType: 'text/csv',
+          body: csvStream,
+        },
+      })
+    ]);
+
+    console.log(`Successfully backed up everything to Google Drive (JSON + CSV): ${backupName}`);
     return { success: true, fileName: backupName };
   } catch (error: any) {
     console.error('Backup to Google Drive failed:', error.message);
