@@ -43,4 +43,4 @@ waitForPort = 5000
 [userenv.shared]
 
 [agent]
-integrations = ["javascript_database:1.0.0"]
+integrations = ["javascript_database:1.0.0", "github:1.0.0"]

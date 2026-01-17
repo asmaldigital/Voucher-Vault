@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { useToast } from '@/hooks/use-toast';
-import { UserPlus, Users, Shield, Edit, CheckCircle2, XCircle, Trash2, Loader2 } from 'lucide-react';
+import { UserPlus, Users, Shield, Edit, CheckCircle2, XCircle, Trash2, Loader2, Github } from 'lucide-react';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import type { User, CreateUser } from '@shared/schema';
 import { Redirect } from 'wouter';
@@ -116,6 +116,33 @@ export default function UsersPage() {
     onError: (error: Error) => {
       toast({
         title: 'Error deleting user',
+        description: error.message,
+        variant: 'destructive',
+      });
+    },
+  });
+
+  const backupMutation = useMutation({
+    mutationFn: async () => {
+      const response = await fetch('/api/github/backup', {
+        method: 'POST',
+        credentials: 'include',
+      });
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || 'Backup failed');
+      }
+      return response.json();
+    },
+    onSuccess: (data) => {
+      toast({
+        title: 'Backup Successful',
+        description: `Code backed up to ${data.owner}/${data.repo}`,
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: 'Backup Failed',
         description: error.message,
         variant: 'destructive',
       });
@@ -283,89 +310,126 @@ export default function UsersPage() {
         </Dialog>
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Users className="h-5 w-5" />
-            Staff Members
-          </CardTitle>
-          <CardDescription>
-            {users.length} user{users.length !== 1 ? 's' : ''} registered
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          {usersLoading ? (
-            <div className="py-8 text-center text-muted-foreground">Loading users...</div>
-          ) : users.length === 0 ? (
-            <div className="py-8 text-center text-muted-foreground">No users found</div>
-          ) : (
-            <div className="divide-y">
-              {users.map((user) => (
-                <div
-                  key={user.id}
-                  className="flex items-center justify-between py-4"
-                  data-testid={`row-user-${user.id}`}
-                >
-                  <div className="flex flex-col gap-1">
-                    <span className="font-medium" data-testid={`text-user-email-${user.id}`}>
-                      {user.email}
-                    </span>
-                    <span className="text-xs text-muted-foreground">
-                      Created {new Date(user.created_at).toLocaleDateString()}
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Badge
-                      variant={user.role === 'admin' ? 'default' : 'secondary'}
-                      data-testid={`badge-user-role-${user.id}`}
-                    >
-                      {user.role === 'admin' ? (
-                        <><Shield className="mr-1 h-3 w-3" /> Admin</>
-                      ) : (
-                        <><Edit className="mr-1 h-3 w-3" /> Editor</>
-                      )}
-                    </Badge>
-                    <AlertDialog>
-                      <AlertDialogTrigger asChild>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="text-destructive hover:text-destructive"
-                          data-testid={`button-delete-user-${user.id}`}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </AlertDialogTrigger>
-                      <AlertDialogContent>
-                        <AlertDialogHeader>
-                          <AlertDialogTitle>Delete User</AlertDialogTitle>
-                          <AlertDialogDescription>
-                            Are you sure you want to delete {user.email}? This action cannot be undone.
-                          </AlertDialogDescription>
-                        </AlertDialogHeader>
-                        <AlertDialogFooter>
-                          <AlertDialogCancel>Cancel</AlertDialogCancel>
-                          <AlertDialogAction
-                            onClick={() => deleteUserMutation.mutate(user.id)}
-                            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                            data-testid={`button-confirm-delete-${user.id}`}
-                          >
-                            {deleteUserMutation.isPending ? (
-                              <Loader2 className="h-4 w-4 animate-spin" />
-                            ) : (
-                              'Delete'
-                            )}
-                          </AlertDialogAction>
-                        </AlertDialogFooter>
-                      </AlertDialogContent>
-                    </AlertDialog>
-                  </div>
-                </div>
-              ))}
+      <div className="grid gap-6">
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Github className="h-5 w-5" />
+              GitHub Backup
+            </CardTitle>
+            <CardDescription>
+              Back up your application code to a private GitHub repository
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="flex items-center justify-between">
+              <div className="space-y-1">
+                <p className="text-sm font-medium">Connect to GitHub</p>
+                <p className="text-sm text-muted-foreground">
+                  Sync your source code to a secure, private repository.
+                </p>
+              </div>
+              <Button 
+                variant="outline" 
+                onClick={() => backupMutation.mutate()}
+                disabled={backupMutation.isPending}
+                data-testid="button-github-backup"
+              >
+                {backupMutation.isPending ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <Github className="mr-2 h-4 w-4" />
+                )}
+                Run Backup
+              </Button>
             </div>
-          )}
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Users className="h-5 w-5" />
+              Staff Members
+            </CardTitle>
+            <CardDescription>
+              {users.length} user{users.length !== 1 ? 's' : ''} registered
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {usersLoading ? (
+              <div className="py-8 text-center text-muted-foreground">Loading users...</div>
+            ) : users.length === 0 ? (
+              <div className="py-8 text-center text-muted-foreground">No users found</div>
+            ) : (
+              <div className="divide-y">
+                {users.map((user) => (
+                  <div
+                    key={user.id}
+                    className="flex items-center justify-between py-4"
+                    data-testid={`row-user-${user.id}`}
+                  >
+                    <div className="flex flex-col gap-1">
+                      <span className="font-medium" data-testid={`text-user-email-${user.id}`}>
+                        {user.email}
+                      </span>
+                      <span className="text-xs text-muted-foreground">
+                        Created {new Date(user.created_at).toLocaleDateString()}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Badge
+                        variant={user.role === 'admin' ? 'default' : 'secondary'}
+                        data-testid={`badge-user-role-${user.id}`}
+                      >
+                        {user.role === 'admin' ? (
+                          <><Shield className="mr-1 h-3 w-3" /> Admin</>
+                        ) : (
+                          <><Edit className="mr-1 h-3 w-3" /> Editor</>
+                        )}
+                      </Badge>
+                      <AlertDialog>
+                        <AlertDialogTrigger asChild>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="text-destructive hover:text-destructive"
+                            data-testid={`button-delete-user-${user.id}`}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </AlertDialogTrigger>
+                        <AlertDialogContent>
+                          <AlertDialogHeader>
+                            <AlertDialogTitle>Delete User</AlertDialogTitle>
+                            <AlertDialogDescription>
+                              Are you sure you want to delete {user.email}? This action cannot be undone.
+                            </AlertDialogDescription>
+                          </AlertDialogHeader>
+                          <AlertDialogFooter>
+                            <AlertDialogCancel>Cancel</AlertDialogCancel>
+                            <AlertDialogAction
+                              onClick={() => deleteUserMutation.mutate(user.id)}
+                              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                              data-testid={`button-confirm-delete-${user.id}`}
+                            >
+                              {deleteUserMutation.isPending ? (
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                              ) : (
+                                'Delete'
+                              )}
+                            </AlertDialogAction>
+                          </AlertDialogFooter>
+                        </AlertDialogContent>
+                      </AlertDialog>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
     </div>
   );
 }
