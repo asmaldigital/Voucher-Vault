@@ -156,23 +156,35 @@ export async function restoreFromBackup(fileId: string) {
       await tx.delete(accounts);
       await tx.delete(users);
 
+      const prepareData = (data: any[]) => {
+        return data.map(item => {
+          const newItem = { ...item };
+          for (const key in newItem) {
+            if (newItem[key] && typeof newItem[key] === 'string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/.test(newItem[key])) {
+              newItem[key] = new Date(newItem[key]);
+            }
+          }
+          return newItem;
+        });
+      };
+
       if (backupData.users?.length > 0) {
-        await tx.insert(users).values(backupData.users);
+        await tx.insert(users).values(prepareData(backupData.users));
       }
       if (backupData.accounts?.length > 0) {
-        await tx.insert(accounts).values(backupData.accounts);
+        await tx.insert(accounts).values(prepareData(backupData.accounts));
       }
       if (backupData.vouchers?.length > 0) {
-        await tx.insert(vouchers).values(backupData.vouchers);
+        await tx.insert(vouchers).values(prepareData(backupData.vouchers));
       }
       if (backupData.purchases?.length > 0) {
-        await tx.insert(accountPurchases).values(backupData.purchases);
+        await tx.insert(accountPurchases).values(prepareData(backupData.purchases));
       }
       if (backupData.manualRedemptions?.length > 0) {
-        await tx.insert(accountRedemptions).values(backupData.manualRedemptions);
+        await tx.insert(accountRedemptions).values(prepareData(backupData.manualRedemptions));
       }
       if (backupData.auditLogs?.length > 0) {
-        await tx.insert(auditLogs).values(backupData.auditLogs);
+        await tx.insert(auditLogs).values(prepareData(backupData.auditLogs));
       }
     });
 
