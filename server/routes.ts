@@ -6,7 +6,7 @@ import { createUserSchema, loginSchema, insertVoucherSchema, users, type Voucher
 import bcrypt from "bcryptjs";
 import { eq } from "drizzle-orm";
 import { Resend } from "resend";
-import { runFullBackup } from "./google-drive";
+import { runFullBackup, restoreFromBackup, listBackups } from "./google-drive";
 
 // CSV generation helpers
 function escapeCsvField(value: string | number | null | undefined): string {
@@ -168,6 +168,30 @@ export async function registerRoutes(
       res.json(result);
     } catch (error: any) {
       console.error("Manual Google Drive backup error:", error.message);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.get("/api/backup/google-drive/list", requireAdmin, async (req: Request, res: Response) => {
+    try {
+      const files = await listBackups();
+      res.json(files);
+    } catch (error: any) {
+      console.error("List backups error:", error.message);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.post("/api/backup/google-drive/restore", requireAdmin, async (req: Request, res: Response) => {
+    try {
+      const { fileId } = req.body;
+      if (!fileId) {
+        return res.status(400).json({ error: "File ID is required" });
+      }
+      const result = await restoreFromBackup(fileId);
+      res.json(result);
+    } catch (error: any) {
+      console.error("Restore backup error:", error.message);
       res.status(500).json({ error: error.message });
     }
   });

@@ -3,7 +3,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { Readable } from 'stream';
 import { db } from './db';
-import { vouchers, users, accounts, accountPurchases, accountRedemptions, auditLogs } from '@shared/schema';
+import { vouchers, users, accounts, accountPurchases, accountRedemptions, auditLogs, passwordResetTokens } from '@shared/schema';
 
 let connectionSettings: any;
 
@@ -82,7 +82,6 @@ export async function runFullBackup() {
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
     const backupName = `SuperSave_Backup_${timestamp}.json`;
 
-    // Fetch all data from database
     const [
       allVouchers,
       allUsers,
@@ -130,6 +129,75 @@ export async function runFullBackup() {
     return { success: true, fileName: backupName };
   } catch (error: any) {
     console.error('Backup to Google Drive failed:', error.message);
+    throw error;
+  }
+}
+
+export async function restoreFromBackup(fileId: string) {
+  try {
+    const drive = await getUncachableGoogleDriveClient();
+    
+    const response = await drive.files.get({
+      fileId: fileId,
+      alt: 'media',
+    });
+
+    const backupData: any = response.data;
+    if (!backupData || typeof backupData !== 'object') {
+      throw new Error('Invalid backup data format');
+    }
+
+    await db.transaction(async (tx) => {
+      await tx.delete(auditLogs);
+      await tx.delete(passwordResetTokens);
+      await tx.delete(accountRedemptions);
+      await tx.delete(accountPurchases);
+      await tx.delete(vouchers);
+      await tx.delete(accounts);
+      await tx.delete(users);
+
+      if (backupData.users?.length > 0) {
+        await tx.insert(users).values(backupData.users);
+      }
+      if (backupData.accounts?.length > 0) {
+        await tx.insert(accounts).values(backupData.accounts);
+      }
+      if (backupData.vouchers?.length > 0) {
+        await tx.insert(vouchers).values(backupData.vouchers);
+      }
+      if (backupData.purchases?.length > 0) {
+        await tx.insert(accountPurchases).values(backupData.purchases);
+      }
+      if (backupData.manualRedemptions?.length > 0) {
+        await tx.insert(accountRedemptions).values(backupData.manualRedemptions);
+      }
+      if (backupData.auditLogs?.length > 0) {
+        await tx.insert(auditLogs).values(backupData.auditLogs);
+      }
+    });
+
+    console.log(`Successfully restored data from Google Drive backup: ${fileId}`);
+    return { success: true };
+  } catch (error: any) {
+    console.error('Restore from Google Drive failed:', error.message);
+    throw error;
+  }
+}
+
+export async function listBackups() {
+  try {
+    const drive = await getUncachableGoogleDriveClient();
+    const folderId = await getOrCreateBackupFolder(drive);
+    
+    const response = await drive.files.list({
+      q: `'${folderId}' in parents and trashed = false`,
+      fields: 'files(id, name, createdTime, size)',
+      orderBy: 'createdTime desc',
+    });
+
+    return response.data.files;
+  } catch (error: any) {
+    console.error('Failed to list backups:', error.message);
     throw error;
   }
 }

@@ -14,9 +14,20 @@ import {
   Calendar,
   CloudUpload,
   Loader2,
+  History,
+  RefreshCw,
 } from 'lucide-react';
 import { Link } from 'wouter';
 import type { DashboardStats } from '@shared/schema';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from '@/components/ui/dialog';
+import { useState } from 'react';
+
+interface BackupFile {
+  id: string;
+  name: string;
+  createdTime: string;
+  size?: string;
+}
 
 function StatCard({
   title,
@@ -76,9 +87,16 @@ function StatCardSkeleton() {
 export default function DashboardPage() {
   const { isAdmin } = useAuth();
   const { toast } = useToast();
+  const [isRestoreOpen, setIsRestoreOpen] = useState(false);
+  
   const { data: stats, isLoading, error } = useQuery<DashboardStats>({
     queryKey: ['/api/dashboard/stats'],
     refetchInterval: 30000,
+  });
+
+  const { data: backups = [], isLoading: backupsLoading, refetch: refetchBackups } = useQuery<BackupFile[]>({
+    queryKey: ['/api/backup/google-drive/list'],
+    enabled: isRestoreOpen && isAdmin,
   });
 
   const backupMutation = useMutation({
@@ -102,6 +120,37 @@ export default function DashboardPage() {
     onError: (error: Error) => {
       toast({
         title: 'Backup Failed',
+        description: error.message,
+        variant: 'destructive',
+      });
+    },
+  });
+
+  const restoreMutation = useMutation({
+    mutationFn: async (fileId: string) => {
+      const response = await fetch('/api/backup/google-drive/restore', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ fileId }),
+      });
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || 'Restore failed');
+      }
+      return response.json();
+    },
+    onSuccess: () => {
+      toast({
+        title: 'Restore Successful',
+        description: 'System data has been restored from the backup.',
+      });
+      setIsRestoreOpen(false);
+      window.location.reload();
+    },
+    onError: (error: Error) => {
+      toast({
+        title: 'Restore Failed',
         description: error.message,
         variant: 'destructive',
       });
@@ -221,20 +270,89 @@ export default function DashboardPage() {
             )}
           </div>
           {isAdmin && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => backupMutation.mutate()}
-              disabled={backupMutation.isPending}
-              data-testid="button-google-drive-backup"
-            >
-              {backupMutation.isPending ? (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              ) : (
-                <CloudUpload className="mr-2 h-4 w-4" />
-              )}
-              Backup to Google Drive
-            </Button>
+            <div className="flex gap-2">
+              <Dialog open={isRestoreOpen} onOpenChange={setIsRestoreOpen}>
+                <DialogTrigger asChild>
+                  <Button variant="outline" size="sm">
+                    <History className="mr-2 h-4 w-4" />
+                    Restore
+                  </Button>
+                </DialogTrigger>
+                <DialogContent className="max-w-md">
+                  <DialogHeader>
+                    <DialogTitle>Restore from Google Drive</DialogTitle>
+                    <DialogDescription>
+                      Selecting a backup will OVERWRITE all current system data.
+                    </DialogDescription>
+                  </DialogHeader>
+                  <div className="max-h-[300px] overflow-y-auto py-4">
+                    {backupsLoading ? (
+                      <div className="flex justify-center p-4">
+                        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                      </div>
+                    ) : backups.length === 0 ? (
+                      <div className="text-center text-sm text-muted-foreground p-4">
+                        No backups found in Google Drive
+                      </div>
+                    ) : (
+                      <div className="space-y-2">
+                        {backups.map((backup) => (
+                          <div 
+                            key={backup.id}
+                            className="flex items-center justify-between p-3 rounded-md border bg-muted/50"
+                          >
+                            <div className="flex flex-col gap-0.5">
+                              <span className="text-sm font-medium truncate max-w-[200px]">
+                                {backup.name}
+                              </span>
+                              <span className="text-xs text-muted-foreground">
+                                {new Date(backup.createdTime).toLocaleString()}
+                              </span>
+                            </div>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => {
+                                if (confirm('Are you absolutely sure? This will replace all current data.')) {
+                                  restoreMutation.mutate(backup.id);
+                                }
+                              }}
+                              disabled={restoreMutation.isPending}
+                            >
+                              {restoreMutation.isPending ? (
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                              ) : (
+                                <RefreshCw className="h-4 w-4" />
+                              )}
+                            </Button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  <DialogFooter>
+                    <Button variant="ghost" onClick={() => setIsRestoreOpen(false)}>
+                      Close
+                    </Button>
+                  </DialogFooter>
+                </DialogContent>
+              </Dialog>
+
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => backupMutation.mutate()}
+                disabled={backupMutation.isPending}
+                data-testid="button-google-drive-backup"
+              >
+                {backupMutation.isPending ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <CloudUpload className="mr-2 h-4 w-4" />
+                )}
+                Backup
+              </Button>
+            </div>
           )}
         </CardHeader>
         <CardContent>
