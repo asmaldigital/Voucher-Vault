@@ -6,7 +6,7 @@ import { createUserSchema, loginSchema, insertVoucherSchema, users, type Voucher
 import bcrypt from "bcryptjs";
 import { eq } from "drizzle-orm";
 import { Resend } from "resend";
-import { runFullBackup, restoreFromBackup, listBackups } from "./google-drive";
+import { runFullBackup, restoreFromBackup, listBackups, restoreFromUploadedBackup } from "./google-drive";
 
 // CSV generation helpers
 function escapeCsvField(value: string | number | null | undefined): string {
@@ -202,6 +202,21 @@ export async function registerRoutes(
       res.json(result);
     } catch (error: any) {
       console.error("Restore backup error:", error.message);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Manual backup file upload restore endpoint (super admin only)
+  app.post("/api/backup/upload-restore", requireSuperAdmin, async (req: Request, res: Response) => {
+    try {
+      const backupData = req.body;
+      if (!backupData || typeof backupData !== 'object') {
+        return res.status(400).json({ error: "Invalid backup data format" });
+      }
+      const result = await restoreFromUploadedBackup(backupData);
+      res.json(result);
+    } catch (error: any) {
+      console.error("Upload restore error:", error.message);
       res.status(500).json({ error: error.message });
     }
   });

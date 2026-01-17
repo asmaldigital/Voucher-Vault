@@ -1,11 +1,13 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
-import { Download, FileSpreadsheet, Loader2, CloudUpload, History, RefreshCw } from 'lucide-react';
+import { Download, FileSpreadsheet, Loader2, CloudUpload, History, RefreshCw, Upload } from 'lucide-react';
 import { useAuth } from '@/lib/auth-context';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 
 interface BackupFile {
   id: string;
@@ -17,6 +19,9 @@ interface BackupFile {
 export default function ExportPage() {
   const [downloading, setDownloading] = useState(false);
   const [isRestoreOpen, setIsRestoreOpen] = useState(false);
+  const [isUploadRestoreOpen, setIsUploadRestoreOpen] = useState(false);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
   const { isSuperAdmin } = useAuth();
 
@@ -82,6 +87,64 @@ export default function ExportPage() {
       });
     },
   });
+
+  const uploadRestoreMutation = useMutation({
+    mutationFn: async (backupData: any) => {
+      const response = await fetch('/api/backup/upload-restore', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify(backupData),
+      });
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || 'Restore failed');
+      }
+      return response.json();
+    },
+    onSuccess: () => {
+      toast({
+        title: 'Restore Successful',
+        description: 'System data has been restored from the uploaded backup file.',
+      });
+      setIsUploadRestoreOpen(false);
+      setSelectedFile(null);
+      window.location.reload();
+    },
+    onError: (error: Error) => {
+      toast({
+        title: 'Restore Failed',
+        description: error.message,
+        variant: 'destructive',
+      });
+    },
+  });
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      setSelectedFile(file);
+    }
+  };
+
+  const handleUploadRestore = async () => {
+    if (!selectedFile) return;
+
+    try {
+      const text = await selectedFile.text();
+      const backupData = JSON.parse(text);
+      
+      if (confirm('Are you absolutely sure? This will replace all current data with the uploaded backup.')) {
+        uploadRestoreMutation.mutate(backupData);
+      }
+    } catch (error) {
+      toast({
+        title: 'Invalid File',
+        description: 'The selected file is not a valid JSON backup file.',
+        variant: 'destructive',
+      });
+    }
+  };
 
   const handleExportAll = async () => {
     setDownloading(true);
@@ -230,6 +293,68 @@ export default function ExportPage() {
                       <DialogFooter>
                         <Button variant="ghost" onClick={() => setIsRestoreOpen(false)}>
                           Close
+                        </Button>
+                      </DialogFooter>
+                    </DialogContent>
+                  </Dialog>
+
+                  <Dialog open={isUploadRestoreOpen} onOpenChange={(open) => {
+                    setIsUploadRestoreOpen(open);
+                    if (!open) setSelectedFile(null);
+                  }}>
+                    <DialogTrigger asChild>
+                      <Button variant="outline" className="w-full" data-testid="button-upload-restore">
+                        <Upload className="mr-2 h-4 w-4" />
+                        Restore from Uploaded File
+                      </Button>
+                    </DialogTrigger>
+                    <DialogContent className="max-w-md">
+                      <DialogHeader>
+                        <DialogTitle>Restore from Backup File</DialogTitle>
+                        <DialogDescription>
+                          Upload a JSON backup file to restore system data. This will OVERWRITE all current data.
+                        </DialogDescription>
+                      </DialogHeader>
+                      <div className="py-4 space-y-4">
+                        <div className="space-y-2">
+                          <Label htmlFor="backup-file">Select Backup File (.json)</Label>
+                          <Input
+                            id="backup-file"
+                            type="file"
+                            accept=".json"
+                            ref={fileInputRef}
+                            onChange={handleFileSelect}
+                            data-testid="input-backup-file"
+                          />
+                        </div>
+                        {selectedFile && (
+                          <div className="p-3 rounded-md border bg-muted/50">
+                            <p className="text-sm font-medium">{selectedFile.name}</p>
+                            <p className="text-xs text-muted-foreground">
+                              Size: {(selectedFile.size / 1024).toFixed(1)} KB
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                      <DialogFooter className="flex gap-2">
+                        <Button variant="ghost" onClick={() => {
+                          setIsUploadRestoreOpen(false);
+                          setSelectedFile(null);
+                        }}>
+                          Cancel
+                        </Button>
+                        <Button
+                          onClick={handleUploadRestore}
+                          disabled={!selectedFile || uploadRestoreMutation.isPending}
+                          variant="destructive"
+                          data-testid="button-confirm-upload-restore"
+                        >
+                          {uploadRestoreMutation.isPending ? (
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          ) : (
+                            <RefreshCw className="mr-2 h-4 w-4" />
+                          )}
+                          Restore Data
                         </Button>
                       </DialogFooter>
                     </DialogContent>

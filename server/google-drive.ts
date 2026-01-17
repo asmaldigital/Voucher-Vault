@@ -213,3 +213,58 @@ export async function listBackups() {
     throw error;
   }
 }
+
+export async function restoreFromUploadedBackup(backupData: any) {
+  try {
+    if (!backupData || typeof backupData !== 'object') {
+      throw new Error('Invalid backup data format');
+    }
+
+    await db.transaction(async (tx) => {
+      await tx.delete(auditLogs);
+      await tx.delete(passwordResetTokens);
+      await tx.delete(accountRedemptions);
+      await tx.delete(accountPurchases);
+      await tx.delete(vouchers);
+      await tx.delete(accounts);
+      await tx.delete(users);
+
+      const prepareData = (data: any[]) => {
+        return data.map(item => {
+          const newItem = { ...item };
+          for (const key in newItem) {
+            if (newItem[key] && typeof newItem[key] === 'string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/.test(newItem[key])) {
+              newItem[key] = new Date(newItem[key]);
+            }
+          }
+          return newItem;
+        });
+      };
+
+      if (backupData.users?.length > 0) {
+        await tx.insert(users).values(prepareData(backupData.users));
+      }
+      if (backupData.accounts?.length > 0) {
+        await tx.insert(accounts).values(prepareData(backupData.accounts));
+      }
+      if (backupData.vouchers?.length > 0) {
+        await tx.insert(vouchers).values(prepareData(backupData.vouchers));
+      }
+      if (backupData.purchases?.length > 0) {
+        await tx.insert(accountPurchases).values(prepareData(backupData.purchases));
+      }
+      if (backupData.manualRedemptions?.length > 0) {
+        await tx.insert(accountRedemptions).values(prepareData(backupData.manualRedemptions));
+      }
+      if (backupData.auditLogs?.length > 0) {
+        await tx.insert(auditLogs).values(prepareData(backupData.auditLogs));
+      }
+    });
+
+    console.log('Successfully restored data from uploaded backup file');
+    return { success: true };
+  } catch (error: any) {
+    console.error('Restore from uploaded backup failed:', error.message);
+    throw error;
+  }
+}
