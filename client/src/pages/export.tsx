@@ -18,11 +18,11 @@ export default function ExportPage() {
   const [downloading, setDownloading] = useState(false);
   const [isRestoreOpen, setIsRestoreOpen] = useState(false);
   const { toast } = useToast();
-  const { isAdmin } = useAuth();
+  const { isSuperAdmin } = useAuth();
 
   const { data: backups = [], isLoading: backupsLoading } = useQuery<BackupFile[]>({
     queryKey: ['/api/backup/google-drive/list'],
-    enabled: isRestoreOpen && isAdmin,
+    enabled: isRestoreOpen && isSuperAdmin,
   });
 
   const backupMutation = useMutation({
@@ -134,109 +134,111 @@ export default function ExportPage() {
         </p>
       </div>
 
-      <div className="grid gap-6 md:grid-cols-2">
-        <Card data-testid="card-export-main" className="flex flex-col">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <CloudUpload className="h-5 w-5 text-primary" />
-              Google Drive Cloud Backup
-            </CardTitle>
-            <CardDescription>
-              Securely back up your data or restore from a previous cloud snapshot.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="flex-1">
-            <div className="space-y-4">
-              <div className="p-4 rounded-md bg-muted/50 border space-y-3">
-                <p className="text-sm font-medium">Automatic Cloud Backups</p>
-                <p className="text-sm text-muted-foreground">
-                  The system automatically backs up all data to your "SuperSave Backups" folder daily.
-                </p>
-              </div>
-              <div className="flex flex-col gap-2">
-                <Button
-                  onClick={() => backupMutation.mutate()}
-                  disabled={backupMutation.isPending}
-                  className="w-full"
-                >
-                  {backupMutation.isPending ? (
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  ) : (
-                    <CloudUpload className="mr-2 h-4 w-4" />
-                  )}
-                  Run Backup to Drive Now
-                </Button>
+      <div className={`grid gap-6 ${isSuperAdmin ? 'md:grid-cols-2' : ''}`}>
+        {isSuperAdmin && (
+          <Card data-testid="card-export-main" className="flex flex-col">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <CloudUpload className="h-5 w-5 text-primary" />
+                Google Drive Cloud Backup
+              </CardTitle>
+              <CardDescription>
+                Securely back up your data or restore from a previous cloud snapshot.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="flex-1">
+              <div className="space-y-4">
+                <div className="p-4 rounded-md bg-muted/50 border space-y-3">
+                  <p className="text-sm font-medium">Automatic Cloud Backups</p>
+                  <p className="text-sm text-muted-foreground">
+                    The system automatically backs up all data to your "SuperSave Backups" folder daily.
+                  </p>
+                </div>
+                <div className="flex flex-col gap-2">
+                  <Button
+                    onClick={() => backupMutation.mutate()}
+                    disabled={backupMutation.isPending}
+                    className="w-full"
+                  >
+                    {backupMutation.isPending ? (
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    ) : (
+                      <CloudUpload className="mr-2 h-4 w-4" />
+                    )}
+                    Run Backup to Drive Now
+                  </Button>
 
-                <Dialog open={isRestoreOpen} onOpenChange={setIsRestoreOpen}>
-                  <DialogTrigger asChild>
-                    <Button variant="outline" className="w-full">
-                      <History className="mr-2 h-4 w-4" />
-                      Restore from Google Drive
-                    </Button>
-                  </DialogTrigger>
-                  <DialogContent className="max-w-md">
-                    <DialogHeader>
-                      <DialogTitle>Restore from Google Drive</DialogTitle>
-                      <DialogDescription>
-                        Selecting a backup will OVERWRITE all current system data.
-                      </DialogDescription>
-                    </DialogHeader>
-                    <div className="max-h-[300px] overflow-y-auto py-4">
-                      {backupsLoading ? (
-                        <div className="flex justify-center p-4">
-                          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-                        </div>
-                      ) : backups.length === 0 ? (
-                        <div className="text-center text-sm text-muted-foreground p-4">
-                          No backups found in Google Drive
-                        </div>
-                      ) : (
-                        <div className="space-y-2">
-                          {backups.map((backup) => (
-                            <div 
-                              key={backup.id}
-                              className="flex items-center justify-between p-3 rounded-md border bg-muted/50"
-                            >
-                              <div className="flex flex-col gap-0.5">
-                                <span className="text-sm font-medium truncate max-w-[200px]">
-                                  {backup.name}
-                                </span>
-                                <span className="text-xs text-muted-foreground">
-                                  {new Date(backup.createdTime).toLocaleString()}
-                                </span>
-                              </div>
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                onClick={() => {
-                                  if (confirm('Are you absolutely sure? This will replace all current data.')) {
-                                    restoreMutation.mutate(backup.id);
-                                  }
-                                }}
-                                disabled={restoreMutation.isPending}
-                              >
-                                {restoreMutation.isPending ? (
-                                  <Loader2 className="h-4 w-4 animate-spin" />
-                                ) : (
-                                  <RefreshCw className="h-4 w-4" />
-                                )}
-                              </Button>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                    <DialogFooter>
-                      <Button variant="ghost" onClick={() => setIsRestoreOpen(false)}>
-                        Close
+                  <Dialog open={isRestoreOpen} onOpenChange={setIsRestoreOpen}>
+                    <DialogTrigger asChild>
+                      <Button variant="outline" className="w-full">
+                        <History className="mr-2 h-4 w-4" />
+                        Restore from Google Drive
                       </Button>
-                    </DialogFooter>
-                  </DialogContent>
-                </Dialog>
+                    </DialogTrigger>
+                    <DialogContent className="max-w-md">
+                      <DialogHeader>
+                        <DialogTitle>Restore from Google Drive</DialogTitle>
+                        <DialogDescription>
+                          Selecting a backup will OVERWRITE all current system data.
+                        </DialogDescription>
+                      </DialogHeader>
+                      <div className="max-h-[300px] overflow-y-auto py-4">
+                        {backupsLoading ? (
+                          <div className="flex justify-center p-4">
+                            <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                          </div>
+                        ) : backups.length === 0 ? (
+                          <div className="text-center text-sm text-muted-foreground p-4">
+                            No backups found in Google Drive
+                          </div>
+                        ) : (
+                          <div className="space-y-2">
+                            {backups.map((backup) => (
+                              <div 
+                                key={backup.id}
+                                className="flex items-center justify-between p-3 rounded-md border bg-muted/50"
+                              >
+                                <div className="flex flex-col gap-0.5">
+                                  <span className="text-sm font-medium truncate max-w-[200px]">
+                                    {backup.name}
+                                  </span>
+                                  <span className="text-xs text-muted-foreground">
+                                    {new Date(backup.createdTime).toLocaleString()}
+                                  </span>
+                                </div>
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  onClick={() => {
+                                    if (confirm('Are you absolutely sure? This will replace all current data.')) {
+                                      restoreMutation.mutate(backup.id);
+                                    }
+                                  }}
+                                  disabled={restoreMutation.isPending}
+                                >
+                                  {restoreMutation.isPending ? (
+                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                  ) : (
+                                    <RefreshCw className="h-4 w-4" />
+                                  )}
+                                </Button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                      <DialogFooter>
+                        <Button variant="ghost" onClick={() => setIsRestoreOpen(false)}>
+                          Close
+                        </Button>
+                      </DialogFooter>
+                    </DialogContent>
+                  </Dialog>
+                </div>
               </div>
-            </div>
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
+        )}
 
         <Card data-testid="card-export-local" className="flex flex-col">
           <CardHeader>

@@ -203,7 +203,7 @@ export type PasswordResetToken = typeof passwordResetTokens.$inferSelect;
 export const createUserSchema = z.object({
   email: z.string().email("Please enter a valid email address"),
   password: z.string().min(6, "Password must be at least 6 characters"),
-  role: z.enum(["admin", "editor"]).default("editor"),
+  role: z.enum(["super_admin", "admin", "editor"]).default("editor"),
 });
 
 export type CreateUser = z.infer<typeof createUserSchema>;
@@ -227,6 +227,7 @@ export type VoucherStatusType = (typeof VoucherStatus)[keyof typeof VoucherStatu
 
 // User roles
 export const UserRole = {
+  SUPER_ADMIN: "super_admin",
   ADMIN: "admin",
   EDITOR: "editor",
 } as const;

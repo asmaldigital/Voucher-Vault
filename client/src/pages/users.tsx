@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { useToast } from '@/hooks/use-toast';
-import { UserPlus, Users, Shield, Edit, CheckCircle2, XCircle, Trash2, Loader2 } from 'lucide-react';
+import { UserPlus, Users, Shield, Edit, CheckCircle2, XCircle, Trash2, Loader2, ShieldCheck } from 'lucide-react';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import type { User, CreateUser } from '@shared/schema';
 import { Redirect } from 'wouter';
@@ -40,7 +40,7 @@ export default function UsersPage() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [role, setRole] = useState<'admin' | 'editor'>('editor');
+  const [role, setRole] = useState<'super_admin' | 'admin' | 'editor'>('editor');
 
   const { data: users = [], isLoading: usersLoading } = useQuery<UserListItem[]>({
     queryKey: ['/api/users'],
@@ -250,7 +250,7 @@ export default function UsersPage() {
               </div>
               <div className="space-y-2">
                 <Label htmlFor="role">Role</Label>
-                <Select value={role} onValueChange={(value: 'admin' | 'editor') => setRole(value)}>
+                <Select value={role} onValueChange={(value: 'super_admin' | 'admin' | 'editor') => setRole(value)}>
                   <SelectTrigger data-testid="select-user-role">
                     <SelectValue placeholder="Select a role" />
                   </SelectTrigger>
@@ -265,6 +265,12 @@ export default function UsersPage() {
                       <div className="flex items-center gap-2">
                         <Shield className="h-4 w-4" />
                         Admin - Full access including user management
+                      </div>
+                    </SelectItem>
+                    <SelectItem value="super_admin">
+                      <div className="flex items-center gap-2">
+                        <ShieldCheck className="h-4 w-4" />
+                        Super Admin - Full access plus Google Drive backups
                       </div>
                     </SelectItem>
                   </SelectContent>
@@ -317,10 +323,13 @@ export default function UsersPage() {
                     </div>
                     <div className="flex items-center gap-2">
                       <Badge
-                        variant={user.role === 'admin' ? 'default' : 'secondary'}
+                        variant={user.role === 'super_admin' ? 'default' : user.role === 'admin' ? 'default' : 'secondary'}
+                        className={user.role === 'super_admin' ? 'bg-amber-500 hover:bg-amber-600' : ''}
                         data-testid={`badge-user-role-${user.id}`}
                       >
-                        {user.role === 'admin' ? (
+                        {user.role === 'super_admin' ? (
+                          <><ShieldCheck className="mr-1 h-3 w-3" /> Super Admin</>
+                        ) : user.role === 'admin' ? (
                           <><Shield className="mr-1 h-3 w-3" /> Admin</>
                         ) : (
                           <><Edit className="mr-1 h-3 w-3" /> Editor</>

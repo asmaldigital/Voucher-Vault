@@ -129,8 +129,18 @@ function requireAdmin(req: Request, res: Response, next: NextFunction) {
   if (!req.session.userId) {
     return res.status(401).json({ error: "Unauthorized" });
   }
-  if (req.session.userRole !== "admin") {
+  if (req.session.userRole !== "admin" && req.session.userRole !== "super_admin") {
     return res.status(403).json({ error: "Admin access required" });
+  }
+  next();
+}
+
+function requireSuperAdmin(req: Request, res: Response, next: NextFunction) {
+  if (!req.session.userId) {
+    return res.status(401).json({ error: "Unauthorized" });
+  }
+  if (req.session.userRole !== "super_admin") {
+    return res.status(403).json({ error: "Super Admin access required" });
   }
   next();
 }
@@ -161,8 +171,8 @@ export async function registerRoutes(
     }
   });
 
-  // Google Drive manual backup endpoint (admin only)
-  app.post("/api/backup/google-drive", requireAdmin, async (req: Request, res: Response) => {
+  // Google Drive manual backup endpoint (super admin only)
+  app.post("/api/backup/google-drive", requireSuperAdmin, async (req: Request, res: Response) => {
     try {
       const result = await runFullBackup();
       res.json(result);
@@ -172,7 +182,7 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/backup/google-drive/list", requireAdmin, async (req: Request, res: Response) => {
+  app.get("/api/backup/google-drive/list", requireSuperAdmin, async (req: Request, res: Response) => {
     try {
       const files = await listBackups();
       res.json(files);
@@ -182,7 +192,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/backup/google-drive/restore", requireAdmin, async (req: Request, res: Response) => {
+  app.post("/api/backup/google-drive/restore", requireSuperAdmin, async (req: Request, res: Response) => {
     try {
       const { fileId } = req.body;
       if (!fileId) {

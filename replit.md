@@ -49,7 +49,7 @@ A voucher management system for SuperSave, a South African supermarket. The syst
 - `id` (UUID, primary key)
 - `email` (unique string)
 - `password` (hashed string)
-- `role` (enum: 'admin', 'editor')
+- `role` (enum: 'super_admin', 'admin', 'editor')
 - `createdAt` (timestamp)
 - `createdBy` (user id, nullable)
 
@@ -222,6 +222,7 @@ npm run dev
 - Secure password reset with time-limited tokens
 
 ## User Roles
+- **Super Admin**: Full access plus Google Drive backup and restore features
 - **Admin**: Full access including user management, voiding vouchers
 - **Editor**: Standard access for scanning, redeeming, importing, and viewing reports
 
