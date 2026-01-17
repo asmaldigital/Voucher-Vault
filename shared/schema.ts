@@ -108,7 +108,6 @@ export const accounts = pgTable("accounts", {
 export const accountsRelations = relations(accounts, ({ many }) => ({
   vouchers: many(vouchers),
   purchases: many(accountPurchases),
-  redemptions: many(accountRedemptions),
 }));
 
 // Account purchases table for tracking purchase history
@@ -142,37 +141,6 @@ export const insertAccountPurchaseSchema = createInsertSchema(accountPurchases).
 
 export type InsertAccountPurchase = z.infer<typeof insertAccountPurchaseSchema>;
 export type AccountPurchase = typeof accountPurchases.$inferSelect;
-
-// Account manual redemptions table for tracking manual fund deductions
-export const accountRedemptions = pgTable("account_redemptions", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  accountId: uuid("account_id").notNull().references(() => accounts.id),
-  amountCents: integer("amount_cents").notNull(),
-  redemptionDate: timestamp("redemption_date").notNull().defaultNow(),
-  notes: text("notes"),
-  createdAt: timestamp("created_at").defaultNow(),
-  createdBy: uuid("created_by").references(() => users.id),
-  createdByEmail: text("created_by_email"),
-});
-
-export const accountRedemptionsRelations = relations(accountRedemptions, ({ one }) => ({
-  account: one(accounts, {
-    fields: [accountRedemptions.accountId],
-    references: [accounts.id],
-  }),
-  createdByUser: one(users, {
-    fields: [accountRedemptions.createdBy],
-    references: [users.id],
-  }),
-}));
-
-export const insertAccountRedemptionSchema = createInsertSchema(accountRedemptions).omit({
-  id: true,
-  createdAt: true,
-});
-
-export type InsertAccountRedemption = z.infer<typeof insertAccountRedemptionSchema>;
-export type AccountRedemption = typeof accountRedemptions.$inferSelect;
 
 export const insertAccountSchema = createInsertSchema(accounts).omit({
   id: true,
@@ -262,23 +230,11 @@ export interface RedemptionResult {
 
 // Account summary with balance tracking
 export interface AccountSummary extends Account {
-  totalReceived: number;
+  totalPurchased: number;
   totalAllocated: number;
   totalRedeemed: number;
-  manualRedemptions: number;
   remainingBalance: number;
-  vouchersReceived: number;
+  vouchersPurchased: number;
   vouchersAllocated: number;
   vouchersRedeemed: number;
-}
-
-// Account activity types
-export interface AccountActivity {
-  id: string;
-  type: 'purchase' | 'redemption' | 'manual_redemption' | 'voucher_allocated';
-  date: Date;
-  amount: number;
-  notes?: string | null;
-  createdBy?: string | null;
-  createdByEmail?: string | null;
 }

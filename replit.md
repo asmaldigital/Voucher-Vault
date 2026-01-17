@@ -75,16 +75,6 @@ A voucher management system for SuperSave, a South African supermarket. The syst
 - `notes` (text, nullable)
 - `createdAt` (timestamp)
 
-### account_redemptions table (Manual Fund Deductions)
-- `id` (UUID, primary key)
-- `accountId` (UUID, reference to accounts)
-- `amountCents` (integer) - Amount deducted in cents
-- `redemptionDate` (timestamp) - When the redemption occurred
-- `notes` (text, nullable)
-- `createdBy` (user id)
-- `createdByEmail` (string)
-- `createdAt` (timestamp)
-
 ### password_reset_tokens table
 - `id` (UUID, primary key)
 - `userId` (UUID, reference to users)
@@ -178,7 +168,6 @@ npm run dev
 - View all staff members with roles
 - Create new users with email/password
 - Assign Admin or Editor roles
-- Delete users (cannot delete yourself)
 - Role-based sidebar (Users menu only visible to admins)
 
 ### 8. Analytics Dashboard

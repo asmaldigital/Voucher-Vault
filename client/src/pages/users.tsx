@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { useToast } from '@/hooks/use-toast';
-import { UserPlus, Users, Shield, Edit, CheckCircle2, XCircle, Trash2, Loader2 } from 'lucide-react';
+import { UserPlus, Users, Shield, Edit, CheckCircle2, XCircle } from 'lucide-react';
 import type { User, CreateUser } from '@shared/schema';
 import { Redirect } from 'wouter';
 
@@ -34,13 +34,12 @@ interface UserListItem {
 }
 
 export default function UsersPage() {
-  const { isAdmin, loading, user: currentUser } = useAuth();
+  const { isAdmin, loading } = useAuth();
   const { toast } = useToast();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [role, setRole] = useState<'admin' | 'editor'>('editor');
-  const [deletingUserId, setDeletingUserId] = useState<string | null>(null);
 
   const { data: users = [], isLoading: usersLoading } = useQuery<UserListItem[]>({
     queryKey: ['/api/users'],
@@ -90,46 +89,6 @@ export default function UsersPage() {
       });
     },
   });
-
-  const deleteUserMutation = useMutation({
-    mutationFn: async (userId: string) => {
-      const response = await fetch(`/api/users/${userId}`, {
-        method: 'DELETE',
-        credentials: 'include',
-      });
-      
-      const data = await response.json();
-      
-      if (!response.ok) {
-        throw new Error(data.error || 'Failed to delete user');
-      }
-      
-      return data;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/users'] });
-      toast({
-        title: 'User deleted',
-        description: 'The user has been removed successfully.',
-      });
-      setDeletingUserId(null);
-    },
-    onError: (error: Error) => {
-      toast({
-        title: 'Error deleting user',
-        description: error.message,
-        variant: 'destructive',
-      });
-      setDeletingUserId(null);
-    },
-  });
-
-  const handleDeleteUser = (userId: string) => {
-    if (window.confirm('Are you sure you want to delete this user? This action cannot be undone.')) {
-      setDeletingUserId(userId);
-      deleteUserMutation.mutate(userId);
-    }
-  };
 
   const passwordValidation = useMemo(() => validatePassword(password), [password]);
 
@@ -323,33 +282,16 @@ export default function UsersPage() {
                       Created {new Date(user.created_at).toLocaleDateString()}
                     </span>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <Badge
-                      variant={user.role === 'admin' ? 'default' : 'secondary'}
-                      data-testid={`badge-user-role-${user.id}`}
-                    >
-                      {user.role === 'admin' ? (
-                        <><Shield className="mr-1 h-3 w-3" /> Admin</>
-                      ) : (
-                        <><Edit className="mr-1 h-3 w-3" /> Editor</>
-                      )}
-                    </Badge>
-                    {currentUser?.id !== user.id && (
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => handleDeleteUser(user.id)}
-                        disabled={deletingUserId === user.id}
-                        data-testid={`button-delete-user-${user.id}`}
-                      >
-                        {deletingUserId === user.id ? (
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                        ) : (
-                          <Trash2 className="h-4 w-4 text-destructive" />
-                        )}
-                      </Button>
+                  <Badge
+                    variant={user.role === 'admin' ? 'default' : 'secondary'}
+                    data-testid={`badge-user-role-${user.id}`}
+                  >
+                    {user.role === 'admin' ? (
+                      <><Shield className="mr-1 h-3 w-3" /> Admin</>
+                    ) : (
+                      <><Edit className="mr-1 h-3 w-3" /> Editor</>
                     )}
-                  </div>
+                  </Badge>
                 </div>
               ))}
             </div>
