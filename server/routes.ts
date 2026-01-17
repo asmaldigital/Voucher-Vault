@@ -6,6 +6,7 @@ import { createUserSchema, loginSchema, insertVoucherSchema, users, type Voucher
 import bcrypt from "bcryptjs";
 import { eq } from "drizzle-orm";
 import { Resend } from "resend";
+import { runFullBackup } from "./google-drive";
 
 // CSV generation helpers
 function escapeCsvField(value: string | number | null | undefined): string {
@@ -157,6 +158,17 @@ export async function registerRoutes(
         database: "disconnected",
         error: error.message 
       });
+    }
+  });
+
+  // Google Drive manual backup endpoint (admin only)
+  app.post("/api/backup/google-drive", requireAdmin, async (req: Request, res: Response) => {
+    try {
+      const result = await runFullBackup();
+      res.json(result);
+    } catch (error: any) {
+      console.error("Manual Google Drive backup error:", error.message);
+      res.status(500).json({ error: error.message });
     }
   });
 

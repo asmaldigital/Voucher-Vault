@@ -1,7 +1,10 @@
-import { useQuery } from '@tanstack/react-query';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { useQuery, useMutation } from '@tanstack/react-query';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { useToast } from '@/hooks/use-toast';
+import { useAuth } from '@/lib/auth-context';
 import {
   Ticket,
   CheckCircle2,
@@ -9,6 +12,8 @@ import {
   TrendingUp,
   Banknote,
   Calendar,
+  CloudUpload,
+  Loader2,
 } from 'lucide-react';
 import { Link } from 'wouter';
 import type { DashboardStats } from '@shared/schema';
@@ -69,9 +74,38 @@ function StatCardSkeleton() {
 }
 
 export default function DashboardPage() {
+  const { isAdmin } = useAuth();
+  const { toast } = useToast();
   const { data: stats, isLoading, error } = useQuery<DashboardStats>({
     queryKey: ['/api/dashboard/stats'],
     refetchInterval: 30000,
+  });
+
+  const backupMutation = useMutation({
+    mutationFn: async () => {
+      const response = await fetch('/api/backup/google-drive', {
+        method: 'POST',
+        credentials: 'include',
+      });
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || 'Backup failed');
+      }
+      return response.json();
+    },
+    onSuccess: (data) => {
+      toast({
+        title: 'Backup Successful',
+        description: `Successfully backed up data to Google Drive as ${data.fileName}`,
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: 'Backup Failed',
+        description: error.message,
+        variant: 'destructive',
+      });
+    },
   });
 
   const formatCurrency = (value: number) => {
@@ -174,11 +208,34 @@ export default function DashboardPage() {
       </div>
 
       <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Clock className="h-5 w-5" />
-            Quick Actions
-          </CardTitle>
+        <CardHeader className="flex flex-row items-center justify-between gap-4 space-y-0">
+          <div className="flex flex-col gap-1">
+            <CardTitle className="flex items-center gap-2">
+              <Clock className="h-5 w-5" />
+              Quick Actions
+            </CardTitle>
+            {isAdmin && (
+              <CardDescription>
+                System maintenance and backups
+              </CardDescription>
+            )}
+          </div>
+          {isAdmin && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => backupMutation.mutate()}
+              disabled={backupMutation.isPending}
+              data-testid="button-google-drive-backup"
+            >
+              {backupMutation.isPending ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <CloudUpload className="mr-2 h-4 w-4" />
+              )}
+              Backup to Google Drive
+            </Button>
+          )}
         </CardHeader>
         <CardContent>
           <div className="flex flex-wrap gap-3">
