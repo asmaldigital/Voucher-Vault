@@ -6,6 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   Table,
   TableBody,
@@ -22,9 +23,23 @@ import {
   TrendingUp,
   Banknote,
   Ticket,
+  BookOpen,
+  Package,
 } from 'lucide-react';
 import { format, subDays } from 'date-fns';
 import type { AuditLog } from '@shared/schema';
+
+interface BookStats {
+  bookNumber: string;
+  total: number;
+  available: number;
+  redeemed: number;
+  expired: number;
+  voided: number;
+  totalValue: number;
+  availableValue: number;
+  redeemedValue: number;
+}
 
 export default function ReportsPage() {
   const [dateRange, setDateRange] = useState<{ from: Date; to: Date }>({
@@ -47,12 +62,20 @@ export default function ReportsPage() {
     },
   });
 
+  const { data: bookStats, isLoading: bookStatsLoading } = useQuery<BookStats[]>({
+    queryKey: ['/api/reports/books'],
+  });
+
   const redemptions = data?.filter((log) => log.action === 'redeemed') ?? [];
   const totalValue = redemptions.reduce((sum, log) => {
     const details = log.details as { value?: number } | null;
     return sum + (details?.value || 50);
   }, 0);
   const uniqueUsers = new Set(redemptions.map((log) => log.userId)).size;
+
+  const formatCurrency = (value: number) => {
+    return `R${value.toLocaleString('en-ZA')}`;
+  };
 
   const formatDate = (dateString?: string | Date | null) => {
     if (!dateString) return '-';
@@ -93,188 +116,425 @@ export default function ReportsPage() {
     URL.revokeObjectURL(url);
   };
 
+  const exportBookStatsToCSV = () => {
+    if (!bookStats?.length) return;
+
+    const headers = ['Book Number', 'Total Vouchers', 'Available', 'Redeemed', 'Expired', 'Voided', 'Total Value', 'Available Value', 'Redeemed Value'];
+    const rows = bookStats.map((book) => [
+      book.bookNumber,
+      book.total,
+      book.available,
+      book.redeemed,
+      book.expired,
+      book.voided,
+      book.totalValue,
+      book.availableValue,
+      book.redeemedValue,
+    ]);
+
+    const csv = [headers.join(','), ...rows.map((r) => r.join(','))].join('\n');
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `book_summary_${format(new Date(), 'yyyy-MM-dd')}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const totalBooks = bookStats?.length ?? 0;
+  const totalAvailableValue = bookStats?.reduce((sum, b) => sum + b.availableValue, 0) ?? 0;
+  const totalRedeemedValue = bookStats?.reduce((sum, b) => sum + b.redeemedValue, 0) ?? 0;
+  const totalVouchers = bookStats?.reduce((sum, b) => sum + b.total, 0) ?? 0;
+  const availableVouchers = bookStats?.reduce((sum, b) => sum + b.available, 0) ?? 0;
+
   return (
     <div className="flex flex-col gap-6 p-6">
       <div className="flex flex-col gap-2">
         <h1 className="text-3xl font-bold">Reports</h1>
         <p className="text-muted-foreground">
-          View redemption history and generate reports
+          View redemption history, book statistics, and generate reports
         </p>
       </div>
 
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex flex-wrap items-center gap-2">
-          <Popover>
-            <PopoverTrigger asChild>
-              <Button variant="outline" className="gap-2" data-testid="button-date-from">
-                <CalendarIcon className="h-4 w-4" />
-                {format(dateRange.from, 'dd MMM yyyy')}
-              </Button>
-            </PopoverTrigger>
-            <PopoverContent className="w-auto p-0" align="start">
-              <Calendar
-                mode="single"
-                selected={dateRange.from}
-                onSelect={(date) => date && setDateRange((r) => ({ ...r, from: date }))}
-                initialFocus
-              />
-            </PopoverContent>
-          </Popover>
-          <span className="text-muted-foreground">to</span>
-          <Popover>
-            <PopoverTrigger asChild>
-              <Button variant="outline" className="gap-2" data-testid="button-date-to">
-                <CalendarIcon className="h-4 w-4" />
-                {format(dateRange.to, 'dd MMM yyyy')}
-              </Button>
-            </PopoverTrigger>
-            <PopoverContent className="w-auto p-0" align="start">
-              <Calendar
-                mode="single"
-                selected={dateRange.to}
-                onSelect={(date) => date && setDateRange((r) => ({ ...r, to: date }))}
-                initialFocus
-              />
-            </PopoverContent>
-          </Popover>
-        </div>
+      <Tabs defaultValue="redemptions" className="w-full">
+        <TabsList className="grid w-full max-w-md grid-cols-2">
+          <TabsTrigger value="redemptions" data-testid="tab-redemptions">
+            <Ticket className="mr-2 h-4 w-4" />
+            Redemptions
+          </TabsTrigger>
+          <TabsTrigger value="books" data-testid="tab-books">
+            <BookOpen className="mr-2 h-4 w-4" />
+            Book Summary
+          </TabsTrigger>
+        </TabsList>
 
-        <Button
-          variant="outline"
-          onClick={exportToCSV}
-          disabled={!redemptions.length}
-          data-testid="button-export"
-        >
-          <Download className="mr-2 h-4 w-4" />
-          Export CSV
-        </Button>
-      </div>
+        <TabsContent value="redemptions" className="space-y-6">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex flex-wrap items-center gap-2">
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button variant="outline" className="gap-2" data-testid="button-date-from">
+                    <CalendarIcon className="h-4 w-4" />
+                    {format(dateRange.from, 'dd MMM yyyy')}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="start">
+                  <Calendar
+                    mode="single"
+                    selected={dateRange.from}
+                    onSelect={(date) => date && setDateRange((r) => ({ ...r, from: date }))}
+                    initialFocus
+                  />
+                </PopoverContent>
+              </Popover>
+              <span className="text-muted-foreground">to</span>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button variant="outline" className="gap-2" data-testid="button-date-to">
+                    <CalendarIcon className="h-4 w-4" />
+                    {format(dateRange.to, 'dd MMM yyyy')}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="start">
+                  <Calendar
+                    mode="single"
+                    selected={dateRange.to}
+                    onSelect={(date) => date && setDateRange((r) => ({ ...r, to: date }))}
+                    initialFocus
+                  />
+                </PopoverContent>
+              </Popover>
+            </div>
 
-      <div className="grid gap-4 md:grid-cols-3">
-        {isLoading ? (
-          <>
-            {Array.from({ length: 3 }).map((_, i) => (
-              <Card key={i}>
-                <CardContent className="pt-6">
-                  <Skeleton className="h-8 w-20" />
-                  <Skeleton className="mt-2 h-4 w-32" />
-                </CardContent>
-              </Card>
-            ))}
-          </>
-        ) : (
-          <>
-            <Card>
-              <CardContent className="pt-6">
-                <div className="flex items-center gap-4">
-                  <div className="flex h-12 w-12 items-center justify-center rounded-md bg-primary/10">
-                    <Ticket className="h-6 w-6 text-primary" />
-                  </div>
-                  <div>
-                    <p className="text-3xl font-bold" data-testid="stat-total-redemptions">
-                      {redemptions.length}
-                    </p>
-                    <p className="text-sm text-muted-foreground">Redemptions</p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="pt-6">
-                <div className="flex items-center gap-4">
-                  <div className="flex h-12 w-12 items-center justify-center rounded-md bg-primary/10">
-                    <Banknote className="h-6 w-6 text-primary" />
-                  </div>
-                  <div>
-                    <p className="text-3xl font-bold" data-testid="stat-total-value">
-                      R{totalValue.toLocaleString('en-ZA')}
-                    </p>
-                    <p className="text-sm text-muted-foreground">Total Value</p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="pt-6">
-                <div className="flex items-center gap-4">
-                  <div className="flex h-12 w-12 items-center justify-center rounded-md bg-primary/10">
-                    <TrendingUp className="h-6 w-6 text-primary" />
-                  </div>
-                  <div>
-                    <p className="text-3xl font-bold" data-testid="stat-unique-users">
-                      {uniqueUsers}
-                    </p>
-                    <p className="text-sm text-muted-foreground">Staff Members</p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          </>
-        )}
-      </div>
+            <Button
+              variant="outline"
+              onClick={exportToCSV}
+              disabled={!redemptions.length}
+              data-testid="button-export"
+            >
+              <Download className="mr-2 h-4 w-4" />
+              Export CSV
+            </Button>
+          </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <FileBarChart className="h-5 w-5" />
-            Redemption History
-          </CardTitle>
-          <CardDescription>
-            Detailed log of all voucher redemptions in the selected period
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          {isLoading ? (
-            <div className="space-y-3">
-              {Array.from({ length: 5 }).map((_, i) => (
-                <Skeleton key={i} className="h-12 w-full" />
-              ))}
-            </div>
-          ) : error ? (
-            <div className="py-8 text-center text-muted-foreground">
-              Failed to load report data. Please try again.
-            </div>
-          ) : redemptions.length === 0 ? (
-            <div className="py-8 text-center text-muted-foreground">
-              No redemptions found in the selected date range.
-            </div>
-          ) : (
-            <ScrollArea className="w-full">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="sticky left-0 bg-background">Action</TableHead>
-                    <TableHead>User</TableHead>
-                    <TableHead>Date</TableHead>
-                    <TableHead>Time</TableHead>
-                    <TableHead>Value</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {redemptions.map((log) => (
-                    <TableRow key={log.id} data-testid={`report-row-${log.id}`}>
-                      <TableCell className="sticky left-0 bg-background font-medium capitalize">
-                        {log.action}
-                      </TableCell>
-                      <TableCell className="max-w-[200px] truncate">
-                        {log.userEmail || log.userId || '-'}
-                      </TableCell>
-                      <TableCell>{formatDate(log.timestamp)}</TableCell>
-                      <TableCell>{formatTime(log.timestamp)}</TableCell>
-                      <TableCell>
-                        <Badge variant="secondary">
-                          R{(log.details as { value?: number } | null)?.value || 50}
-                        </Badge>
-                      </TableCell>
-                    </TableRow>
+          <div className="grid gap-4 md:grid-cols-3">
+            {isLoading ? (
+              <>
+                {Array.from({ length: 3 }).map((_, i) => (
+                  <Card key={i}>
+                    <CardContent className="pt-6">
+                      <Skeleton className="h-8 w-20" />
+                      <Skeleton className="mt-2 h-4 w-32" />
+                    </CardContent>
+                  </Card>
+                ))}
+              </>
+            ) : (
+              <>
+                <Card>
+                  <CardContent className="pt-6">
+                    <div className="flex items-center gap-4">
+                      <div className="flex h-12 w-12 items-center justify-center rounded-md bg-primary/10">
+                        <Ticket className="h-6 w-6 text-primary" />
+                      </div>
+                      <div>
+                        <p className="text-3xl font-bold" data-testid="stat-total-redemptions">
+                          {redemptions.length}
+                        </p>
+                        <p className="text-sm text-muted-foreground">Redemptions</p>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardContent className="pt-6">
+                    <div className="flex items-center gap-4">
+                      <div className="flex h-12 w-12 items-center justify-center rounded-md bg-primary/10">
+                        <Banknote className="h-6 w-6 text-primary" />
+                      </div>
+                      <div>
+                        <p className="text-3xl font-bold" data-testid="stat-total-value">
+                          R{totalValue.toLocaleString('en-ZA')}
+                        </p>
+                        <p className="text-sm text-muted-foreground">Total Value</p>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardContent className="pt-6">
+                    <div className="flex items-center gap-4">
+                      <div className="flex h-12 w-12 items-center justify-center rounded-md bg-primary/10">
+                        <TrendingUp className="h-6 w-6 text-primary" />
+                      </div>
+                      <div>
+                        <p className="text-3xl font-bold" data-testid="stat-unique-users">
+                          {uniqueUsers}
+                        </p>
+                        <p className="text-sm text-muted-foreground">Staff Members</p>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              </>
+            )}
+          </div>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <FileBarChart className="h-5 w-5" />
+                Redemption History
+              </CardTitle>
+              <CardDescription>
+                Detailed log of all voucher redemptions in the selected period
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {isLoading ? (
+                <div className="space-y-3">
+                  {Array.from({ length: 5 }).map((_, i) => (
+                    <Skeleton key={i} className="h-12 w-full" />
                   ))}
-                </TableBody>
-              </Table>
-              <ScrollBar orientation="horizontal" />
-            </ScrollArea>
-          )}
-        </CardContent>
-      </Card>
+                </div>
+              ) : error ? (
+                <div className="py-8 text-center text-muted-foreground">
+                  Failed to load report data. Please try again.
+                </div>
+              ) : redemptions.length === 0 ? (
+                <div className="py-8 text-center text-muted-foreground">
+                  No redemptions found in the selected date range.
+                </div>
+              ) : (
+                <ScrollArea className="w-full">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="sticky left-0 bg-background">Action</TableHead>
+                        <TableHead>User</TableHead>
+                        <TableHead>Date</TableHead>
+                        <TableHead>Time</TableHead>
+                        <TableHead>Value</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {redemptions.map((log) => (
+                        <TableRow key={log.id} data-testid={`report-row-${log.id}`}>
+                          <TableCell className="sticky left-0 bg-background font-medium capitalize">
+                            {log.action}
+                          </TableCell>
+                          <TableCell className="max-w-[200px] truncate">
+                            {log.userEmail || log.userId || '-'}
+                          </TableCell>
+                          <TableCell>{formatDate(log.timestamp)}</TableCell>
+                          <TableCell>{formatTime(log.timestamp)}</TableCell>
+                          <TableCell>
+                            <Badge variant="secondary">
+                              R{(log.details as { value?: number } | null)?.value || 50}
+                            </Badge>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                  <ScrollBar orientation="horizontal" />
+                </ScrollArea>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="books" className="space-y-6">
+          <div className="flex justify-end">
+            <Button
+              variant="outline"
+              onClick={exportBookStatsToCSV}
+              disabled={!bookStats?.length}
+              data-testid="button-export-books"
+            >
+              <Download className="mr-2 h-4 w-4" />
+              Export Book Summary
+            </Button>
+          </div>
+
+          <div className="grid gap-4 md:grid-cols-4">
+            {bookStatsLoading ? (
+              <>
+                {Array.from({ length: 4 }).map((_, i) => (
+                  <Card key={i}>
+                    <CardContent className="pt-6">
+                      <Skeleton className="h-8 w-20" />
+                      <Skeleton className="mt-2 h-4 w-32" />
+                    </CardContent>
+                  </Card>
+                ))}
+              </>
+            ) : (
+              <>
+                <Card>
+                  <CardContent className="pt-6">
+                    <div className="flex items-center gap-4">
+                      <div className="flex h-12 w-12 items-center justify-center rounded-md bg-primary/10">
+                        <BookOpen className="h-6 w-6 text-primary" />
+                      </div>
+                      <div>
+                        <p className="text-3xl font-bold" data-testid="stat-total-books">
+                          {totalBooks}
+                        </p>
+                        <p className="text-sm text-muted-foreground">Total Books</p>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardContent className="pt-6">
+                    <div className="flex items-center gap-4">
+                      <div className="flex h-12 w-12 items-center justify-center rounded-md bg-primary/10">
+                        <Package className="h-6 w-6 text-primary" />
+                      </div>
+                      <div>
+                        <p className="text-3xl font-bold" data-testid="stat-total-vouchers">
+                          {totalVouchers.toLocaleString('en-ZA')}
+                        </p>
+                        <p className="text-sm text-muted-foreground">
+                          {availableVouchers.toLocaleString('en-ZA')} available
+                        </p>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardContent className="pt-6">
+                    <div className="flex items-center gap-4">
+                      <div className="flex h-12 w-12 items-center justify-center rounded-md bg-primary/10">
+                        <Banknote className="h-6 w-6 text-primary" />
+                      </div>
+                      <div>
+                        <p className="text-3xl font-bold text-primary" data-testid="stat-outstanding-value">
+                          {formatCurrency(totalAvailableValue)}
+                        </p>
+                        <p className="text-sm text-muted-foreground">Outstanding</p>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardContent className="pt-6">
+                    <div className="flex items-center gap-4">
+                      <div className="flex h-12 w-12 items-center justify-center rounded-md bg-primary/10">
+                        <TrendingUp className="h-6 w-6 text-primary" />
+                      </div>
+                      <div>
+                        <p className="text-3xl font-bold" data-testid="stat-redeemed-value">
+                          {formatCurrency(totalRedeemedValue)}
+                        </p>
+                        <p className="text-sm text-muted-foreground">Redeemed</p>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              </>
+            )}
+          </div>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <BookOpen className="h-5 w-5" />
+                Book Summary
+              </CardTitle>
+              <CardDescription>
+                Overview of all voucher books with totals, redemptions, and outstanding balances
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {bookStatsLoading ? (
+                <div className="space-y-3">
+                  {Array.from({ length: 5 }).map((_, i) => (
+                    <Skeleton key={i} className="h-12 w-full" />
+                  ))}
+                </div>
+              ) : !bookStats?.length ? (
+                <div className="py-8 text-center text-muted-foreground">
+                  No voucher books found.
+                </div>
+              ) : (
+                <ScrollArea className="w-full">
+                  <Table data-testid="table-book-summary">
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="sticky left-0 bg-background">Book Number</TableHead>
+                        <TableHead className="text-right">Total</TableHead>
+                        <TableHead className="text-right">Available</TableHead>
+                        <TableHead className="text-right">Redeemed</TableHead>
+                        <TableHead className="text-right">Expired</TableHead>
+                        <TableHead className="text-right">Voided</TableHead>
+                        <TableHead className="text-right">Total Value</TableHead>
+                        <TableHead className="text-right">Outstanding</TableHead>
+                        <TableHead className="text-right">Redeemed Value</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {bookStats.map((book) => (
+                        <TableRow key={book.bookNumber} data-testid={`row-book-${book.bookNumber}`}>
+                          <TableCell className="sticky left-0 bg-background font-medium font-mono">
+                            {book.bookNumber}
+                          </TableCell>
+                          <TableCell className="text-right">{book.total.toLocaleString('en-ZA')}</TableCell>
+                          <TableCell className="text-right">
+                            <Badge variant="default" data-testid={`badge-available-${book.bookNumber}`}>
+                              {book.available.toLocaleString('en-ZA')}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <Badge variant="secondary">{book.redeemed.toLocaleString('en-ZA')}</Badge>
+                          </TableCell>
+                          <TableCell className="text-right">
+                            {book.expired > 0 ? (
+                              <Badge variant="outline">{book.expired.toLocaleString('en-ZA')}</Badge>
+                            ) : (
+                              '-'
+                            )}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            {book.voided > 0 ? (
+                              <Badge variant="destructive">{book.voided.toLocaleString('en-ZA')}</Badge>
+                            ) : (
+                              '-'
+                            )}
+                          </TableCell>
+                          <TableCell className="text-right font-medium">
+                            {formatCurrency(book.totalValue)}
+                          </TableCell>
+                          <TableCell className="text-right font-medium text-primary">
+                            {formatCurrency(book.availableValue)}
+                          </TableCell>
+                          <TableCell className="text-right text-muted-foreground">
+                            {formatCurrency(book.redeemedValue)}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                      <TableRow className="bg-muted/50 font-bold">
+                        <TableCell className="sticky left-0 bg-muted/50">Totals</TableCell>
+                        <TableCell className="text-right">{totalVouchers.toLocaleString('en-ZA')}</TableCell>
+                        <TableCell className="text-right">{availableVouchers.toLocaleString('en-ZA')}</TableCell>
+                        <TableCell className="text-right">{bookStats.reduce((s, b) => s + b.redeemed, 0).toLocaleString('en-ZA')}</TableCell>
+                        <TableCell className="text-right">{bookStats.reduce((s, b) => s + b.expired, 0).toLocaleString('en-ZA')}</TableCell>
+                        <TableCell className="text-right">{bookStats.reduce((s, b) => s + b.voided, 0).toLocaleString('en-ZA')}</TableCell>
+                        <TableCell className="text-right">{formatCurrency(bookStats.reduce((s, b) => s + b.totalValue, 0))}</TableCell>
+                        <TableCell className="text-right text-primary">{formatCurrency(totalAvailableValue)}</TableCell>
+                        <TableCell className="text-right text-muted-foreground">{formatCurrency(totalRedeemedValue)}</TableCell>
+                      </TableRow>
+                    </TableBody>
+                  </Table>
+                  <ScrollBar orientation="horizontal" />
+                </ScrollArea>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }

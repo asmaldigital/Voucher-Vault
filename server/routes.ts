@@ -336,10 +336,11 @@ export async function registerRoutes(
   // Voucher routes
   app.get("/api/vouchers", requireAuth, async (req: Request, res: Response) => {
     try {
-      const { status, search, limit, offset } = req.query;
+      const { status, search, accountId, limit, offset } = req.query;
       const result = await storage.getVouchers({
         status: status as string,
         search: search as string,
+        accountId: accountId as string,
         limit: limit ? parseInt(limit as string) : undefined,
         offset: offset ? parseInt(offset as string) : undefined,
       });
@@ -574,6 +575,34 @@ export async function registerRoutes(
       return res.json(logs);
     } catch (error) {
       console.error("Error fetching reports:", error);
+      return res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  // Book statistics for enhanced reporting
+  app.get("/api/reports/books", requireAuth, async (_req: Request, res: Response) => {
+    try {
+      const bookStats = await storage.getBookStats();
+      return res.json(bookStats);
+    } catch (error) {
+      console.error("Error fetching book stats:", error);
+      return res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  // Book redemptions by period for detailed reporting
+  app.get("/api/reports/books/:bookNumber/redemptions", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const { startDate, endDate } = req.query;
+      const bookNumber = req.params.bookNumber;
+      
+      const start = startDate ? new Date(startDate as string) : new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+      const end = endDate ? new Date(endDate as string) : new Date();
+      
+      const redemptions = await storage.getBookRedemptionsByPeriod(bookNumber, start, end);
+      return res.json(redemptions);
+    } catch (error) {
+      console.error("Error fetching book redemptions:", error);
       return res.status(500).json({ error: "Internal server error" });
     }
   });

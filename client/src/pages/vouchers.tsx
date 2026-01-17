@@ -21,8 +21,8 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area';
-import { ListChecks, Search, Filter, ChevronLeft, ChevronRight } from 'lucide-react';
-import type { Voucher, VoucherStatusType } from '@shared/schema';
+import { ListChecks, Search, Filter, ChevronLeft, ChevronRight, Building2 } from 'lucide-react';
+import type { Voucher, VoucherStatusType, Account } from '@shared/schema';
 
 const statusColors: Record<VoucherStatusType, string> = {
   available: 'bg-primary/10 text-primary border-primary/20',
@@ -36,13 +36,24 @@ const PAGE_SIZE = 20;
 export default function VouchersPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [accountFilter, setAccountFilter] = useState<string>('all');
   const [page, setPage] = useState(0);
 
+  const { data: accounts } = useQuery<Account[]>({
+    queryKey: ['/api/accounts'],
+    queryFn: async () => {
+      const response = await fetch('/api/accounts', { credentials: 'include' });
+      if (!response.ok) throw new Error('Failed to fetch accounts');
+      return response.json();
+    },
+  });
+
   const { data, isLoading, error } = useQuery<{ vouchers: Voucher[]; total: number }>({
-    queryKey: ['/api/vouchers', statusFilter, searchQuery, page],
+    queryKey: ['/api/vouchers', statusFilter, accountFilter, searchQuery, page],
     queryFn: async () => {
       const params = new URLSearchParams();
       if (statusFilter !== 'all') params.set('status', statusFilter);
+      if (accountFilter !== 'all') params.set('accountId', accountFilter);
       if (searchQuery.trim()) params.set('search', searchQuery);
       params.set('limit', PAGE_SIZE.toString());
       params.set('offset', (page * PAGE_SIZE).toString());
@@ -74,6 +85,12 @@ export default function VouchersPage() {
     });
   };
 
+  const getAccountName = (accountId: string | null) => {
+    if (!accountId) return '-';
+    const account = accounts?.find((a) => a.id === accountId);
+    return account?.name || '-';
+  };
+
   return (
     <div className="flex flex-col gap-6 p-6">
       <div className="flex flex-col gap-2">
@@ -94,11 +111,11 @@ export default function VouchersPage() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="flex flex-col gap-4 sm:flex-row">
-            <div className="relative flex-1">
+          <div className="flex flex-col gap-4 sm:flex-row sm:flex-wrap">
+            <div className="relative flex-1 min-w-[200px]">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input
-                placeholder="Search by barcode, batch, or book..."
+                placeholder="Search by barcode or book..."
                 value={searchQuery}
                 onChange={(e) => {
                   setSearchQuery(e.target.value);
@@ -117,7 +134,7 @@ export default function VouchersPage() {
                   setPage(0);
                 }}
               >
-                <SelectTrigger className="w-40" data-testid="select-status-filter">
+                <SelectTrigger className="w-36" data-testid="select-status-filter">
                   <SelectValue placeholder="Filter by status" />
                 </SelectTrigger>
                 <SelectContent>
@@ -126,6 +143,28 @@ export default function VouchersPage() {
                   <SelectItem value="redeemed">Redeemed</SelectItem>
                   <SelectItem value="expired">Expired</SelectItem>
                   <SelectItem value="voided">Voided</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex items-center gap-2">
+              <Building2 className="h-4 w-4 text-muted-foreground" />
+              <Select
+                value={accountFilter}
+                onValueChange={(value) => {
+                  setAccountFilter(value);
+                  setPage(0);
+                }}
+              >
+                <SelectTrigger className="w-44" data-testid="select-account-filter">
+                  <SelectValue placeholder="Filter by account" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Accounts</SelectItem>
+                  {accounts?.map((account) => (
+                    <SelectItem key={account.id} value={account.id}>
+                      {account.name}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
@@ -155,6 +194,7 @@ export default function VouchersPage() {
                       <TableHead>Value</TableHead>
                       <TableHead>Status</TableHead>
                       <TableHead>Book</TableHead>
+                      <TableHead>Account</TableHead>
                       <TableHead>Created</TableHead>
                       <TableHead>Redeemed</TableHead>
                       <TableHead>Redeemed By</TableHead>
@@ -176,6 +216,9 @@ export default function VouchersPage() {
                           </Badge>
                         </TableCell>
                         <TableCell>{voucher.bookNumber || voucher.batchNumber || '-'}</TableCell>
+                        <TableCell className="max-w-[120px] truncate">
+                          {getAccountName(voucher.accountId)}
+                        </TableCell>
                         <TableCell>{formatDate(voucher.createdAt)}</TableCell>
                         <TableCell>{formatDateTime(voucher.redeemedAt)}</TableCell>
                         <TableCell className="max-w-[150px] truncate">
@@ -203,19 +246,17 @@ export default function VouchersPage() {
                     data-testid="button-prev-page"
                   >
                     <ChevronLeft className="h-4 w-4" />
-                    Previous
                   </Button>
                   <span className="text-sm text-muted-foreground">
-                    Page {page + 1} of {totalPages || 1}
+                    Page {page + 1} of {Math.max(1, totalPages)}
                   </span>
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() => setPage((p) => p + 1)}
+                    onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
                     disabled={page >= totalPages - 1}
                     data-testid="button-next-page"
                   >
-                    Next
                     <ChevronRight className="h-4 w-4" />
                   </Button>
                 </div>

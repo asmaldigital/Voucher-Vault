@@ -40,6 +40,7 @@ export interface IStorage {
   getVouchers(options?: {
     status?: string;
     search?: string;
+    accountId?: string;
     limit?: number;
     offset?: number;
   }): Promise<{ vouchers: Voucher[]; total: number }>;
@@ -93,6 +94,10 @@ export interface IStorage {
 
   // Analytics
   getRedemptionsByPeriod(startDate: Date, endDate: Date, groupBy: 'day' | 'week' | 'month'): Promise<{ period: string; count: number; value: number }[]>;
+  
+  // Book-based reporting
+  getBookStats(): Promise<{ bookNumber: string; total: number; available: number; redeemed: number; expired: number; voided: number; totalValue: number; availableValue: number; redeemedValue: number }[]>;
+  getBookRedemptionsByPeriod(bookNumber: string, startDate: Date, endDate: Date): Promise<{ date: string; count: number; value: number }[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -140,6 +145,7 @@ export class DatabaseStorage implements IStorage {
   async getVouchers(options?: {
     status?: string;
     search?: string;
+    accountId?: string;
     limit?: number;
     offset?: number;
   }): Promise<{ vouchers: Voucher[]; total: number }> {
@@ -147,6 +153,10 @@ export class DatabaseStorage implements IStorage {
 
     if (options?.status && options.status !== "all") {
       conditions.push(eq(vouchers.status, options.status));
+    }
+
+    if (options?.accountId) {
+      conditions.push(eq(vouchers.accountId, options.accountId));
     }
 
     if (options?.search) {
@@ -501,6 +511,49 @@ export class DatabaseStorage implements IStorage {
       .orderBy(sql`to_char(${vouchers.redeemedAt}, ${dateFormat})`);
 
     return result.filter(r => r.period !== null) as { period: string; count: number; value: number }[];
+  }
+
+  // Book-based reporting
+  async getBookStats(): Promise<{ bookNumber: string; total: number; available: number; redeemed: number; expired: number; voided: number; totalValue: number; availableValue: number; redeemedValue: number }[]> {
+    const result = await db
+      .select({
+        bookNumber: sql<string>`COALESCE(${vouchers.bookNumber}, ${vouchers.batchNumber})`,
+        total: sql<number>`count(*)::int`,
+        available: sql<number>`count(*) FILTER (WHERE ${vouchers.status} = 'available')::int`,
+        redeemed: sql<number>`count(*) FILTER (WHERE ${vouchers.status} = 'redeemed')::int`,
+        expired: sql<number>`count(*) FILTER (WHERE ${vouchers.status} = 'expired')::int`,
+        voided: sql<number>`count(*) FILTER (WHERE ${vouchers.status} = 'voided')::int`,
+        totalValue: sql<number>`COALESCE(SUM(${vouchers.value}), 0)::int`,
+        availableValue: sql<number>`COALESCE(SUM(CASE WHEN ${vouchers.status} = 'available' THEN ${vouchers.value} ELSE 0 END), 0)::int`,
+        redeemedValue: sql<number>`COALESCE(SUM(CASE WHEN ${vouchers.status} = 'redeemed' THEN ${vouchers.value} ELSE 0 END), 0)::int`,
+      })
+      .from(vouchers)
+      .groupBy(sql`COALESCE(${vouchers.bookNumber}, ${vouchers.batchNumber})`)
+      .orderBy(sql`COALESCE(${vouchers.bookNumber}, ${vouchers.batchNumber})`);
+    
+    return result.filter(r => r.bookNumber !== null) as { bookNumber: string; total: number; available: number; redeemed: number; expired: number; voided: number; totalValue: number; availableValue: number; redeemedValue: number }[];
+  }
+
+  async getBookRedemptionsByPeriod(bookNumber: string, startDate: Date, endDate: Date): Promise<{ date: string; count: number; value: number }[]> {
+    const result = await db
+      .select({
+        date: sql<string>`to_char(${vouchers.redeemedAt}, 'YYYY-MM-DD')`,
+        count: sql<number>`count(*)::int`,
+        value: sql<number>`COALESCE(SUM(${vouchers.value}), 0)::int`,
+      })
+      .from(vouchers)
+      .where(
+        and(
+          eq(vouchers.status, "redeemed"),
+          sql`COALESCE(${vouchers.bookNumber}, ${vouchers.batchNumber}) = ${bookNumber}`,
+          gte(vouchers.redeemedAt, startDate),
+          sql`${vouchers.redeemedAt} <= ${endDate}`
+        )
+      )
+      .groupBy(sql`to_char(${vouchers.redeemedAt}, 'YYYY-MM-DD')`)
+      .orderBy(sql`to_char(${vouchers.redeemedAt}, 'YYYY-MM-DD')`);
+    
+    return result.filter(r => r.date !== null) as { date: string; count: number; value: number }[];
   }
 }
 
