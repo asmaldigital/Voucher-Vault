@@ -572,9 +572,9 @@ export default function AccountsPage() {
                     <FormControl>
                       <Input
                         type="number"
-                        min={50}
-                        step={50}
-                        placeholder="e.g., 1000"
+                        min={0.01}
+                        step={0.01}
+                        placeholder="e.g., 1000.50"
                         data-testid="input-purchase-amount"
                         {...field}
                       />
