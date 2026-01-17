@@ -493,9 +493,11 @@ export class DatabaseStorage implements IStorage {
         break;
     }
 
+    const periodExpr = sql<string>`to_char(${vouchers.redeemedAt}, ${dateFormat})`;
+
     const result = await db
       .select({
-        period: sql<string>`to_char(${vouchers.redeemedAt}, ${dateFormat})`,
+        period: periodExpr,
         count: sql<number>`count(*)::int`,
         value: sql<number>`coalesce(sum(${vouchers.value}), 0)::int`,
       })
@@ -507,8 +509,8 @@ export class DatabaseStorage implements IStorage {
           sql`${vouchers.redeemedAt} <= ${endDate}`
         )
       )
-      .groupBy(sql`to_char(${vouchers.redeemedAt}, ${dateFormat})`)
-      .orderBy(sql`to_char(${vouchers.redeemedAt}, ${dateFormat})`);
+      .groupBy(periodExpr)
+      .orderBy(periodExpr);
 
     return result.filter(r => r.period !== null) as { period: string; count: number; value: number }[];
   }
@@ -535,9 +537,10 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getBookRedemptionsByPeriod(bookNumber: string, startDate: Date, endDate: Date): Promise<{ date: string; count: number; value: number }[]> {
+    const dateExpr = sql<string>`to_char(${vouchers.redeemedAt}, 'YYYY-MM-DD')`;
     const result = await db
       .select({
-        date: sql<string>`to_char(${vouchers.redeemedAt}, 'YYYY-MM-DD')`,
+        date: dateExpr,
         count: sql<number>`count(*)::int`,
         value: sql<number>`COALESCE(SUM(${vouchers.value}), 0)::int`,
       })
@@ -550,8 +553,8 @@ export class DatabaseStorage implements IStorage {
           sql`${vouchers.redeemedAt} <= ${endDate}`
         )
       )
-      .groupBy(sql`to_char(${vouchers.redeemedAt}, 'YYYY-MM-DD')`)
-      .orderBy(sql`to_char(${vouchers.redeemedAt}, 'YYYY-MM-DD')`);
+      .groupBy(dateExpr)
+      .orderBy(dateExpr);
     
     return result.filter(r => r.date !== null) as { date: string; count: number; value: number }[];
   }

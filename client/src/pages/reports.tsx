@@ -17,6 +17,8 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area';
+import { format, subDays } from 'date-fns';
+import type { AuditLog, AccountSummary } from '@shared/schema';
 import {
   FileBarChart,
   CalendarIcon,
@@ -27,9 +29,8 @@ import {
   BookOpen,
   Package,
   Wallet,
+  CheckCircle2,
 } from 'lucide-react';
-import { format, subDays } from 'date-fns';
-import type { AuditLog, AccountSummary } from '@shared/schema';
 
 interface BookStats {
   bookNumber: string;
@@ -55,7 +56,7 @@ export default function ReportsPage() {
     accounts: true,
   });
 
-  const { data: auditLogs, isLoading: reportsLoading, error: reportsError } = useQuery<AuditLog[]>({
+  const { data: auditLogs, isLoading: reportsLoading } = useQuery<AuditLog[]>({
     queryKey: ['/api/reports', dateRange.from.toISOString(), dateRange.to.toISOString()],
     queryFn: async () => {
       const params = new URLSearchParams();
@@ -74,7 +75,7 @@ export default function ReportsPage() {
     queryKey: ['/api/reports/books'],
   });
 
-  const { data: accounts, isLoading: accountsLoading } = useQuery<AccountSummary[]>({
+  const { data: accountSummaries, isLoading: accountsLoading } = useQuery<AccountSummary[]>({
     queryKey: ['/api/accounts/summaries'],
   });
 
@@ -83,11 +84,6 @@ export default function ReportsPage() {
   });
 
   const redemptions = auditLogs?.filter((log) => log.action === 'redeemed') ?? [];
-  const redemptionsTotalValue = redemptions.reduce((sum, log) => {
-    const details = log.details as { value?: number } | null;
-    return sum + (details?.value || 50);
-  }, 0);
-  const uniqueUsers = new Set(redemptions.map((log) => log.userId)).size;
 
   const formatCurrency = (value: number) => {
     return `R${value.toLocaleString('en-ZA')}`;
@@ -111,7 +107,7 @@ export default function ReportsPage() {
   };
 
   const exportAllToCSV = () => {
-    if (!redemptions.length && !bookStats?.length && !accounts?.length) return;
+    if (!redemptions.length && !bookStats?.length && !accountSummaries?.length) return;
 
     let csvContent = '';
 
@@ -153,11 +149,11 @@ export default function ReportsPage() {
     }
 
     // Section 3: Accounts
-    if (sections.accounts && accounts?.length) {
+    if (sections.accounts && accountSummaries?.length) {
       csvContent += 'ACCOUNTS REPORT\n';
       csvContent += `Generated: ${format(new Date(), 'dd MMM yyyy HH:mm')}\n\n`;
       const accHeaders = ['Account Name', 'Contact Name', 'Email', 'Phone', 'Total Received', 'Total Redeemed', 'Remaining Balance'];
-      const accRows = accounts.map((acc) => [
+      const accRows = accountSummaries.map((acc) => [
         acc.name,
         acc.contactName || '',
         acc.email || '',
@@ -177,12 +173,6 @@ export default function ReportsPage() {
     a.click();
     URL.revokeObjectURL(url);
   };
-
-  const totalBooks = bookStats?.length ?? 0;
-  const totalAvailableValue = bookStats?.reduce((sum, b) => sum + b.availableValue, 0) ?? 0;
-  const totalRedeemedValue = bookStats?.reduce((sum, b) => sum + b.redeemedValue, 0) ?? 0;
-  const totalVouchers = bookStats?.reduce((sum, b) => sum + b.total, 0) ?? 0;
-  const availableVouchers = bookStats?.reduce((sum, b) => sum + b.available, 0) ?? 0;
 
   return (
     <div className="flex flex-col gap-6 p-6">
@@ -456,7 +446,7 @@ export default function ReportsPage() {
               <div className="space-y-3">
                 {Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-12 w-full" />)}
               </div>
-            ) : !accounts?.length ? (
+            ) : !accountSummaries?.length ? (
               <div className="py-8 text-center text-muted-foreground">No accounts found.</div>
             ) : (
               <ScrollArea className="w-full">
@@ -470,7 +460,7 @@ export default function ReportsPage() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {accounts.map((acc) => (
+                    {accountSummaries.map((acc) => (
                       <TableRow key={acc.id}>
                         <TableCell className="font-medium">{acc.name}</TableCell>
                         <TableCell className="text-right">{formatCurrency(acc.totalPurchased)}</TableCell>
@@ -493,5 +483,3 @@ export default function ReportsPage() {
     </div>
   );
 }
-
-import { CheckCircle2 } from 'lucide-react';
