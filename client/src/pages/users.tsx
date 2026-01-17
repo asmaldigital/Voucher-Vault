@@ -137,7 +137,7 @@ export default function UsersPage() {
     onSuccess: (data) => {
       toast({
         title: 'Backup Successful',
-        description: `Code backed up to ${data.owner}/${data.repo}`,
+        description: `Backed up ${data.filesBackedUp} files to ${data.owner}/${data.repo}`,
       });
     },
     onError: (error: Error) => {
