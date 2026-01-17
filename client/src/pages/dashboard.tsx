@@ -124,7 +124,7 @@ export default function DashboardPage() {
       <div className="flex flex-col gap-2">
         <h1 className="text-3xl font-bold">Dashboard</h1>
         <p className="text-muted-foreground">
-          Voucher management system (Verification Change)
+          Overview of your voucher management system
         </p>
       </div>
 
