@@ -94,50 +94,52 @@ export default function ReportsPage() {
     });
   };
 
-  const exportToCSV = () => {
-    if (!redemptions.length) return;
+  const exportAllToCSV = () => {
+    if (!redemptions.length && !bookStats?.length) return;
 
-    const headers = ['Action', 'User', 'Date', 'Time', 'Details'];
-    const rows = redemptions.map((log) => [
-      log.action,
-      log.userEmail || log.userId || '',
-      log.timestamp ? new Date(log.timestamp).toLocaleDateString('en-ZA') : '',
-      log.timestamp ? new Date(log.timestamp).toLocaleTimeString('en-ZA') : '',
-      JSON.stringify(log.details || {}),
-    ]);
+    let csvContent = '';
 
-    const csv = [headers.join(','), ...rows.map((r) => r.join(','))].join('\n');
-    const blob = new Blob([csv], { type: 'text/csv' });
+    // Section 1: Redemptions
+    if (redemptions.length) {
+      csvContent += 'REDEMPTIONS REPORT\n';
+      csvContent += `Period: ${format(dateRange.from, 'dd MMM yyyy')} to ${format(dateRange.to, 'dd MMM yyyy')}\n\n`;
+      const redHeaders = ['Action', 'User', 'Date', 'Time', 'Value', 'Details'];
+      const redRows = redemptions.map((log) => [
+        log.action,
+        log.userEmail || log.userId || '',
+        log.timestamp ? new Date(log.timestamp).toLocaleDateString('en-ZA') : '',
+        log.timestamp ? new Date(log.timestamp).toLocaleTimeString('en-ZA') : '',
+        (log.details as { value?: number } | null)?.value || 50,
+        JSON.stringify(log.details || {}),
+      ]);
+      csvContent += [redHeaders.join(','), ...redRows.map((r) => r.join(','))].join('\n');
+      csvContent += '\n\n';
+    }
+
+    // Section 2: Book Summary
+    if (bookStats?.length) {
+      csvContent += 'BOOK SUMMARY REPORT\n';
+      csvContent += `Generated: ${format(new Date(), 'dd MMM yyyy HH:mm')}\n\n`;
+      const bookHeaders = ['Book Number', 'Total Vouchers', 'Available', 'Redeemed', 'Expired', 'Voided', 'Total Value', 'Available Value', 'Redeemed Value'];
+      const bookRows = bookStats.map((book) => [
+        book.bookNumber,
+        book.total,
+        book.available,
+        book.redeemed,
+        book.expired,
+        book.voided,
+        book.totalValue,
+        book.availableValue,
+        book.redeemedValue,
+      ]);
+      csvContent += [bookHeaders.join(','), ...bookRows.map((r) => r.join(','))].join('\n');
+    }
+
+    const blob = new Blob([csvContent], { type: 'text/csv' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `redemptions_${format(dateRange.from, 'yyyy-MM-dd')}_to_${format(dateRange.to, 'yyyy-MM-dd')}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
-  };
-
-  const exportBookStatsToCSV = () => {
-    if (!bookStats?.length) return;
-
-    const headers = ['Book Number', 'Total Vouchers', 'Available', 'Redeemed', 'Expired', 'Voided', 'Total Value', 'Available Value', 'Redeemed Value'];
-    const rows = bookStats.map((book) => [
-      book.bookNumber,
-      book.total,
-      book.available,
-      book.redeemed,
-      book.expired,
-      book.voided,
-      book.totalValue,
-      book.availableValue,
-      book.redeemedValue,
-    ]);
-
-    const csv = [headers.join(','), ...rows.map((r) => r.join(','))].join('\n');
-    const blob = new Blob([csv], { type: 'text/csv' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `book_summary_${format(new Date(), 'yyyy-MM-dd')}.csv`;
+    a.download = `supersave_report_${format(new Date(), 'yyyy-MM-dd')}.csv`;
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -158,20 +160,32 @@ export default function ReportsPage() {
       </div>
 
       <Tabs defaultValue="redemptions" className="w-full">
-        <TabsList className="grid w-full max-w-md grid-cols-2">
-          <TabsTrigger value="redemptions" data-testid="tab-redemptions">
-            <Ticket className="mr-2 h-4 w-4" />
-            Redemptions
-          </TabsTrigger>
-          <TabsTrigger value="books" data-testid="tab-books">
-            <BookOpen className="mr-2 h-4 w-4" />
-            Book Summary
-          </TabsTrigger>
-        </TabsList>
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <TabsList className="grid w-full max-w-md grid-cols-2">
+            <TabsTrigger value="redemptions" data-testid="tab-redemptions">
+              <Ticket className="mr-2 h-4 w-4" />
+              Redemptions
+            </TabsTrigger>
+            <TabsTrigger value="books" data-testid="tab-books">
+              <BookOpen className="mr-2 h-4 w-4" />
+              Book Summary
+            </TabsTrigger>
+          </TabsList>
 
-        <TabsContent value="redemptions" className="space-y-6">
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex flex-wrap items-center gap-2">
+          <Button
+            variant="outline"
+            onClick={exportAllToCSV}
+            disabled={!redemptions.length && !bookStats?.length}
+            data-testid="button-export"
+          >
+            <Download className="mr-2 h-4 w-4" />
+            Export Complete Report
+          </Button>
+        </div>
+
+      <TabsContent value="redemptions" className="space-y-6">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex flex-wrap items-center gap-2">
               <Popover>
                 <PopoverTrigger asChild>
                   <Button variant="outline" className="gap-2" data-testid="button-date-from">
@@ -206,16 +220,6 @@ export default function ReportsPage() {
                 </PopoverContent>
               </Popover>
             </div>
-
-            <Button
-              variant="outline"
-              onClick={exportToCSV}
-              disabled={!redemptions.length}
-              data-testid="button-export"
-            >
-              <Download className="mr-2 h-4 w-4" />
-              Export CSV
-            </Button>
           </div>
 
           <div className="grid gap-4 md:grid-cols-3">
@@ -345,18 +349,7 @@ export default function ReportsPage() {
           </Card>
         </TabsContent>
 
-        <TabsContent value="books" className="space-y-6">
-          <div className="flex justify-end">
-            <Button
-              variant="outline"
-              onClick={exportBookStatsToCSV}
-              disabled={!bookStats?.length}
-              data-testid="button-export-books"
-            >
-              <Download className="mr-2 h-4 w-4" />
-              Export Book Summary
-            </Button>
-          </div>
+      <TabsContent value="books" className="space-y-6">
 
           <div className="grid gap-4 md:grid-cols-4">
             {bookStatsLoading ? (
