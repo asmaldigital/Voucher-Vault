@@ -5,6 +5,7 @@ import { serveStatic } from "./static";
 import { createServer } from "http";
 import connectPgSimple from "connect-pg-simple";
 import { pool } from "./db";
+import { runFullBackup } from "./google-drive";
 
 const app = express();
 const httpServer = createServer(app);
@@ -97,6 +98,26 @@ app.use((req, res, next) => {
 
 (async () => {
   await registerRoutes(httpServer, app);
+
+  // Run initial backup after server starts
+  setTimeout(async () => {
+    try {
+      console.log("Running scheduled backup to Google Drive...");
+      await runFullBackup();
+    } catch (err) {
+      console.error("Scheduled backup failed:", err);
+    }
+  }, 1000 * 60 * 5); // 5 minutes after startup
+
+  // Schedule daily backup
+  setInterval(async () => {
+    try {
+      console.log("Running daily scheduled backup to Google Drive...");
+      await runFullBackup();
+    } catch (err) {
+      console.error("Daily scheduled backup failed:", err);
+    }
+  }, 24 * 60 * 60 * 1000); // Every 24 hours
 
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
     const status = err.status || err.statusCode || 500;
