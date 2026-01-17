@@ -154,7 +154,6 @@ export default function VouchersPage() {
                       <TableHead className="sticky left-0 bg-background">Barcode</TableHead>
                       <TableHead>Value</TableHead>
                       <TableHead>Status</TableHead>
-                      <TableHead>Batch</TableHead>
                       <TableHead>Book</TableHead>
                       <TableHead>Created</TableHead>
                       <TableHead>Redeemed</TableHead>
@@ -176,8 +175,7 @@ export default function VouchersPage() {
                             {voucher.status}
                           </Badge>
                         </TableCell>
-                        <TableCell>{voucher.batchNumber}</TableCell>
-                        <TableCell>{voucher.bookNumber || '-'}</TableCell>
+                        <TableCell>{voucher.bookNumber || voucher.batchNumber || '-'}</TableCell>
                         <TableCell>{formatDate(voucher.createdAt)}</TableCell>
                         <TableCell>{formatDateTime(voucher.redeemedAt)}</TableCell>
                         <TableCell className="max-w-[150px] truncate">

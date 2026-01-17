@@ -10,7 +10,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { useToast } from '@/hooks/use-toast';
-import { UserPlus, Users, Shield, Edit, CheckCircle2, XCircle } from 'lucide-react';
+import { UserPlus, Users, Shield, Edit, CheckCircle2, XCircle, Trash2, Loader2 } from 'lucide-react';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import type { User, CreateUser } from '@shared/schema';
 import { Redirect } from 'wouter';
 
@@ -84,6 +85,37 @@ export default function UsersPage() {
     onError: (error: Error) => {
       toast({
         title: 'Error creating user',
+        description: error.message,
+        variant: 'destructive',
+      });
+    },
+  });
+
+  const deleteUserMutation = useMutation({
+    mutationFn: async (userId: string) => {
+      const response = await fetch(`/api/users/${userId}`, {
+        method: 'DELETE',
+        credentials: 'include',
+      });
+      
+      const data = await response.json();
+      
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to delete user');
+      }
+      
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/users'] });
+      toast({
+        title: 'User deleted',
+        description: 'The user has been removed from the system.',
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: 'Error deleting user',
         description: error.message,
         variant: 'destructive',
       });
@@ -282,16 +314,52 @@ export default function UsersPage() {
                       Created {new Date(user.created_at).toLocaleDateString()}
                     </span>
                   </div>
-                  <Badge
-                    variant={user.role === 'admin' ? 'default' : 'secondary'}
-                    data-testid={`badge-user-role-${user.id}`}
-                  >
-                    {user.role === 'admin' ? (
-                      <><Shield className="mr-1 h-3 w-3" /> Admin</>
-                    ) : (
-                      <><Edit className="mr-1 h-3 w-3" /> Editor</>
-                    )}
-                  </Badge>
+                  <div className="flex items-center gap-2">
+                    <Badge
+                      variant={user.role === 'admin' ? 'default' : 'secondary'}
+                      data-testid={`badge-user-role-${user.id}`}
+                    >
+                      {user.role === 'admin' ? (
+                        <><Shield className="mr-1 h-3 w-3" /> Admin</>
+                      ) : (
+                        <><Edit className="mr-1 h-3 w-3" /> Editor</>
+                      )}
+                    </Badge>
+                    <AlertDialog>
+                      <AlertDialogTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="text-destructive hover:text-destructive"
+                          data-testid={`button-delete-user-${user.id}`}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </AlertDialogTrigger>
+                      <AlertDialogContent>
+                        <AlertDialogHeader>
+                          <AlertDialogTitle>Delete User</AlertDialogTitle>
+                          <AlertDialogDescription>
+                            Are you sure you want to delete {user.email}? This action cannot be undone.
+                          </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                          <AlertDialogCancel>Cancel</AlertDialogCancel>
+                          <AlertDialogAction
+                            onClick={() => deleteUserMutation.mutate(user.id)}
+                            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                            data-testid={`button-confirm-delete-${user.id}`}
+                          >
+                            {deleteUserMutation.isPending ? (
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : (
+                              'Delete'
+                            )}
+                          </AlertDialogAction>
+                        </AlertDialogFooter>
+                      </AlertDialogContent>
+                    </AlertDialog>
+                  </div>
                 </div>
               ))}
             </div>

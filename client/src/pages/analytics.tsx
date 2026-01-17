@@ -70,7 +70,14 @@ export default function AnalyticsPage() {
   }).toString();
 
   const { data: chartData, isLoading } = useQuery<PeriodData[]>({
-    queryKey: [`/api/analytics/redemptions?${queryParams}`],
+    queryKey: ['/api/analytics/redemptions', queryParams],
+    queryFn: async () => {
+      const response = await fetch(`/api/analytics/redemptions?${queryParams}`, {
+        credentials: 'include',
+      });
+      if (!response.ok) throw new Error('Failed to fetch analytics');
+      return response.json();
+    },
   });
 
   const { data: currentStats } = useQuery({

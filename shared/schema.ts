@@ -150,6 +150,37 @@ export const insertAccountSchema = createInsertSchema(accounts).omit({
 export type InsertAccount = z.infer<typeof insertAccountSchema>;
 export type Account = typeof accounts.$inferSelect;
 
+// Manual redemptions table for bulk buyer fund redemptions
+export const accountRedemptions = pgTable("account_redemptions", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  accountId: uuid("account_id").notNull().references(() => accounts.id),
+  amountCents: integer("amount_cents").notNull(),
+  redemptionDate: timestamp("redemption_date").notNull().defaultNow(),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow(),
+  createdBy: uuid("created_by").references(() => users.id),
+  createdByEmail: text("created_by_email"),
+});
+
+export const accountRedemptionsRelations = relations(accountRedemptions, ({ one }) => ({
+  account: one(accounts, {
+    fields: [accountRedemptions.accountId],
+    references: [accounts.id],
+  }),
+  createdByUser: one(users, {
+    fields: [accountRedemptions.createdBy],
+    references: [users.id],
+  }),
+}));
+
+export const insertAccountRedemptionSchema = createInsertSchema(accountRedemptions).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertAccountRedemption = z.infer<typeof insertAccountRedemptionSchema>;
+export type AccountRedemption = typeof accountRedemptions.$inferSelect;
+
 // Password reset tokens table
 export const passwordResetTokens = pgTable("password_reset_tokens", {
   id: uuid("id").primaryKey().defaultRandom(),

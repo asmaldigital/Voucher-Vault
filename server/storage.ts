@@ -4,6 +4,7 @@ import {
   auditLogs,
   accounts,
   accountPurchases,
+  accountRedemptions,
   passwordResetTokens,
   type User,
   type InsertUser,
@@ -15,6 +16,8 @@ import {
   type InsertAccount,
   type AccountPurchase,
   type InsertAccountPurchase,
+  type AccountRedemption,
+  type InsertAccountRedemption,
   type AccountSummary,
   type PasswordResetToken,
   type InsertPasswordResetToken,
@@ -28,6 +31,7 @@ export interface IStorage {
   getUser(id: string): Promise<User | undefined>;
   getUserByEmail(email: string): Promise<User | undefined>;
   createUser(user: InsertUser): Promise<User>;
+  deleteUser(id: string): Promise<void>;
   getAllUsers(): Promise<User[]>;
 
   // Voucher operations
@@ -70,11 +74,17 @@ export interface IStorage {
   // Account purchase operations
   getAccountPurchases(accountId: string): Promise<AccountPurchase[]>;
   createAccountPurchase(purchase: InsertAccountPurchase): Promise<AccountPurchase>;
+  
+  // Account redemption operations
+  getAccountRedemptions(accountId: string): Promise<AccountRedemption[]>;
+  createAccountRedemption(redemption: InsertAccountRedemption): Promise<AccountRedemption>;
+  getAccountTotalRedemptions(accountId: string): Promise<number>;
 
   // Export operations
   getAllVouchersForExport(): Promise<Voucher[]>;
   getAllAuditLogsForExport(): Promise<AuditLog[]>;
   getAllAccountPurchasesForExport(): Promise<AccountPurchase[]>;
+  getUniqueBookNumbers(): Promise<string[]>;
 
   // Password reset operations
   createPasswordResetToken(token: InsertPasswordResetToken): Promise<PasswordResetToken>;
@@ -104,6 +114,10 @@ export class DatabaseStorage implements IStorage {
 
   async getAllUsers(): Promise<User[]> {
     return db.select().from(users).orderBy(desc(users.createdAt));
+  }
+
+  async deleteUser(id: string): Promise<void> {
+    await db.delete(users).where(eq(users.id, id));
   }
 
   // Voucher operations
@@ -351,16 +365,21 @@ export class DatabaseStorage implements IStorage {
       .from(vouchers)
       .where(and(eq(vouchers.accountId, accountId), eq(vouchers.status, "redeemed")));
 
+    // Get manual redemptions total
+    const manualRedemptionsTotal = await this.getAccountTotalRedemptions(accountId);
+
     const totalPurchased = purchaseResult?.totalAmount || 0;
     const totalAllocated = allocatedResult?.sum || 0;
     const totalRedeemed = redeemedResult?.sum || 0;
+    // Total redeemed includes voucher redemptions + manual fund redemptions
+    const totalRedeemedWithManual = totalRedeemed + (manualRedemptionsTotal / 100);
 
     return {
       ...account,
       totalPurchased: totalPurchased / 100,
       totalAllocated: totalAllocated,
-      totalRedeemed: totalRedeemed,
-      remainingBalance: (totalPurchased / 100) - totalRedeemed,
+      totalRedeemed: totalRedeemedWithManual,
+      remainingBalance: (totalPurchased / 100) - totalRedeemedWithManual,
       vouchersPurchased: purchaseResult?.totalVouchers || 0,
       vouchersAllocated: allocatedResult?.count || 0,
       vouchersRedeemed: redeemedResult?.count || 0,
@@ -400,6 +419,38 @@ export class DatabaseStorage implements IStorage {
 
   async getAllAccountPurchasesForExport(): Promise<AccountPurchase[]> {
     return db.select().from(accountPurchases).orderBy(desc(accountPurchases.purchaseDate));
+  }
+
+  async getUniqueBookNumbers(): Promise<string[]> {
+    const result = await db
+      .selectDistinct({ bookNumber: vouchers.bookNumber })
+      .from(vouchers)
+      .where(sql`${vouchers.bookNumber} IS NOT NULL AND ${vouchers.bookNumber} != ''`)
+      .orderBy(vouchers.bookNumber);
+    
+    return result.map(r => r.bookNumber).filter((b): b is string => b !== null);
+  }
+
+  // Account redemption operations
+  async getAccountRedemptions(accountId: string): Promise<AccountRedemption[]> {
+    return db
+      .select()
+      .from(accountRedemptions)
+      .where(eq(accountRedemptions.accountId, accountId))
+      .orderBy(desc(accountRedemptions.redemptionDate));
+  }
+
+  async createAccountRedemption(redemption: InsertAccountRedemption): Promise<AccountRedemption> {
+    const [created] = await db.insert(accountRedemptions).values(redemption).returning();
+    return created;
+  }
+
+  async getAccountTotalRedemptions(accountId: string): Promise<number> {
+    const result = await db
+      .select({ total: sql<number>`COALESCE(SUM(${accountRedemptions.amountCents}), 0)` })
+      .from(accountRedemptions)
+      .where(eq(accountRedemptions.accountId, accountId));
+    return Number(result[0]?.total || 0);
   }
 
   // Password reset operations

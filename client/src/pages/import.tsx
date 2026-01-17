@@ -19,7 +19,6 @@ import type { ImportResult } from '@shared/schema';
 
 export default function ImportPage() {
   const [file, setFile] = useState<File | null>(null);
-  const [batchNumber, setBatchNumber] = useState('');
   const [bookNumber, setBookNumber] = useState('');
   const [voucherValue, setVoucherValue] = useState('50');
   const [importing, setImporting] = useState(false);
@@ -88,8 +87,8 @@ export default function ImportPage() {
 
   const importMutation = useMutation({
     mutationFn: async () => {
-      if (!file || !batchNumber.trim()) {
-        throw new Error('Please provide both a file and batch number');
+      if (!file || !bookNumber.trim()) {
+        throw new Error('Please provide both a file and book number');
       }
 
       const content = await file.text();
@@ -108,8 +107,7 @@ export default function ImportPage() {
         credentials: 'include',
         body: JSON.stringify({
           barcodes,
-          batchNumber: batchNumber.trim(),
-          bookNumber: bookNumber.trim() || undefined,
+          bookNumber: bookNumber.trim(),
           value,
         }),
       });
@@ -155,11 +153,11 @@ export default function ImportPage() {
       });
       return;
     }
-    if (!batchNumber.trim()) {
+    if (!bookNumber.trim()) {
       toast({
         variant: 'destructive',
         title: 'Error',
-        description: 'Please enter a batch number',
+        description: 'Please enter a book number',
       });
       return;
     }
@@ -171,7 +169,6 @@ export default function ImportPage() {
 
   const handleReset = () => {
     setFile(null);
-    setBatchNumber('');
     setBookNumber('');
     setVoucherValue('50');
     setResult(null);
@@ -257,18 +254,7 @@ export default function ImportPage() {
             )}
 
             <div className="space-y-2">
-              <Label htmlFor="batch">Batch Number</Label>
-              <Input
-                id="batch"
-                placeholder="e.g., BATCH-2024-001"
-                value={batchNumber}
-                onChange={(e) => setBatchNumber(e.target.value)}
-                data-testid="input-batch-number"
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="book">Book Number (1600 vouchers per book)</Label>
+              <Label htmlFor="book">Book Number *</Label>
               <Input
                 id="book"
                 placeholder="e.g., BOOK-001"
@@ -305,7 +291,7 @@ export default function ImportPage() {
             <div className="flex gap-2">
               <Button
                 onClick={handleImport}
-                disabled={!file || !batchNumber.trim() || importing}
+                disabled={!file || !bookNumber.trim() || importing}
                 className="flex-1 h-12"
                 data-testid="button-import"
               >

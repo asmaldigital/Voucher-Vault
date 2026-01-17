@@ -202,12 +202,14 @@ export default function ScanPage() {
                               R{result.voucher.value}
                             </span>
                           </div>
-                          <div className="flex justify-between">
-                            <span className="text-muted-foreground">Batch:</span>
-                            <span className="font-mono" data-testid="text-voucher-batch">
-                              {result.voucher.batchNumber}
-                            </span>
-                          </div>
+                          {(result.voucher.bookNumber || result.voucher.batchNumber) && (
+                            <div className="flex justify-between">
+                              <span className="text-muted-foreground">Book:</span>
+                              <span className="font-mono" data-testid="text-voucher-book">
+                                {result.voucher.bookNumber || result.voucher.batchNumber}
+                              </span>
+                            </div>
+                          )}
                           {result.redeemedBy && (
                             <div className="flex justify-between">
                               <span className="text-muted-foreground">Redeemed by:</span>

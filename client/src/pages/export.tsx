@@ -1,17 +1,35 @@
 import { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
-import { Download, FileSpreadsheet, Loader2 } from 'lucide-react';
+import { Download, FileSpreadsheet, Loader2, Filter } from 'lucide-react';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 
 export default function ExportPage() {
   const [downloading, setDownloading] = useState(false);
+  const [selectedBook, setSelectedBook] = useState<string>('all');
   const { toast } = useToast();
+
+  const { data: bookNumbers = [], isLoading: booksLoading } = useQuery<string[]>({
+    queryKey: ['/api/vouchers/books'],
+    refetchInterval: 5000,
+  });
 
   const handleExportAll = async () => {
     setDownloading(true);
     try {
-      const response = await fetch('/api/exports/all', {
+      const url = selectedBook === 'all' 
+        ? '/api/exports/all' 
+        : `/api/exports/all?bookNumber=${encodeURIComponent(selectedBook)}`;
+      
+      const response = await fetch(url, {
         credentials: 'include',
       });
       
@@ -24,18 +42,20 @@ export default function ExportPage() {
       const filenameMatch = contentDisposition?.match(/filename="(.+)"/);
       const filename = filenameMatch ? filenameMatch[1] : `supersave_export_${new Date().toISOString().split('T')[0]}.txt`;
 
-      const url = window.URL.createObjectURL(blob);
+      const url2 = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
-      a.href = url;
+      a.href = url2;
       a.download = filename;
       document.body.appendChild(a);
       a.click();
-      window.URL.revokeObjectURL(url);
+      window.URL.revokeObjectURL(url2);
       document.body.removeChild(a);
 
       toast({
         title: 'Export downloaded',
-        description: 'All data has been exported successfully.',
+        description: selectedBook === 'all' 
+          ? 'All data has been exported successfully.'
+          : `Data for book ${selectedBook} has been exported successfully.`,
       });
     } catch (error) {
       toast({
@@ -61,44 +81,69 @@ export default function ExportPage() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <FileSpreadsheet className="h-5 w-5" />
-            Complete Data Export
+            Data Export
           </CardTitle>
           <CardDescription>
-            Export all vouchers, accounts, purchases, users, and audit logs in one file.
-            The export includes all data formatted for easy reading and can be opened in any text editor or spreadsheet program.
+            Export vouchers, accounts, purchases, users, and audit logs.
+            You can filter by book number or export everything.
           </CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-4">
-          <div className="text-sm text-muted-foreground">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-end">
+            <div className="flex-1 space-y-2">
+              <label className="text-sm font-medium flex items-center gap-2">
+                <Filter className="h-4 w-4" />
+                Filter by Book
+              </label>
+              <Select value={selectedBook} onValueChange={setSelectedBook}>
+                <SelectTrigger className="w-full" data-testid="select-book-filter">
+                  <SelectValue placeholder="Select a book..." />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Books</SelectItem>
+                  {bookNumbers.map((book) => (
+                    <SelectItem key={book} value={book}>
+                      {book}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {booksLoading && (
+                <p className="text-xs text-muted-foreground">Loading books...</p>
+              )}
+            </div>
+            
+            <Button
+              size="lg"
+              onClick={handleExportAll}
+              disabled={downloading}
+              className="sm:w-auto"
+              data-testid="button-export-all"
+            >
+              {downloading ? (
+                <>
+                  <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                  Exporting...
+                </>
+              ) : (
+                <>
+                  <Download className="mr-2 h-5 w-5" />
+                  {selectedBook === 'all' ? 'Export Everything' : `Export Book ${selectedBook}`}
+                </>
+              )}
+            </Button>
+          </div>
+
+          <div className="text-sm text-muted-foreground border-t pt-4">
             <p className="font-medium mb-2">This export includes:</p>
             <ul className="list-disc list-inside space-y-1">
-              <li>All vouchers with barcode, status, batch, and book numbers</li>
+              <li>Vouchers with barcode, status, and book numbers</li>
               <li>Bulk buyer accounts with contact info and balances</li>
-              <li>Purchase records with amounts and dates</li>
+              <li>Purchase and redemption records with amounts and dates</li>
               <li>Staff user accounts and roles</li>
               <li>Complete audit log history</li>
             </ul>
           </div>
-          
-          <Button
-            size="lg"
-            onClick={handleExportAll}
-            disabled={downloading}
-            className="w-full sm:w-auto"
-            data-testid="button-export-all"
-          >
-            {downloading ? (
-              <>
-                <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-                Exporting...
-              </>
-            ) : (
-              <>
-                <Download className="mr-2 h-5 w-5" />
-                Export Everything
-              </>
-            )}
-          </Button>
         </CardContent>
       </Card>
 

@@ -298,6 +298,30 @@ export async function registerRoutes(
     }
   });
 
+  // Delete user route (admin only)
+  app.delete("/api/users/:id", requireAdmin, async (req: Request, res: Response) => {
+    try {
+      const userId = req.params.id;
+      
+      // Prevent deleting yourself
+      if (userId === req.session.userId) {
+        return res.status(400).json({ error: "You cannot delete your own account" });
+      }
+      
+      const user = await storage.getUser(userId);
+      if (!user) {
+        return res.status(404).json({ error: "User not found" });
+      }
+      
+      await storage.deleteUser(userId);
+      
+      return res.json({ success: true, message: "User deleted successfully" });
+    } catch (error) {
+      console.error("Error deleting user:", error);
+      return res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
   // Dashboard stats
   app.get("/api/dashboard/stats", requireAuth, async (_req: Request, res: Response) => {
     try {
@@ -357,10 +381,11 @@ export async function registerRoutes(
       if (voucher.status === "redeemed") {
         return res.json({
           success: false,
-          message: "This voucher has already been redeemed.",
+          message: `This voucher has already been redeemed.${voucher.bookNumber ? ` Book: ${voucher.bookNumber}` : ''}`,
           voucher,
           redeemedBy: voucher.redeemedByEmail,
           redeemedAt: voucher.redeemedAt?.toISOString(),
+          bookNumber: voucher.bookNumber,
         });
       }
 
@@ -412,14 +437,14 @@ export async function registerRoutes(
 
   app.post("/api/vouchers/import", requireAuth, async (req: Request, res: Response) => {
     try {
-      const { barcodes, batchNumber, bookNumber, value } = req.body;
+      const { barcodes, bookNumber, value } = req.body;
 
       if (!barcodes || !Array.isArray(barcodes) || barcodes.length === 0) {
         return res.status(400).json({ error: "Barcodes array is required" });
       }
 
-      if (!batchNumber) {
-        return res.status(400).json({ error: "Batch number is required" });
+      if (!bookNumber) {
+        return res.status(400).json({ error: "Book number is required" });
       }
 
       const results = { success: 0, failed: 0, errors: [] as string[] };
@@ -439,8 +464,8 @@ export async function registerRoutes(
             barcode,
             value: value || 50,
             status: "available",
-            batchNumber,
-            bookNumber: bookNumber || null,
+            batchNumber: bookNumber,
+            bookNumber: bookNumber,
           });
           results.success++;
         } catch (err: any) {
@@ -458,7 +483,7 @@ export async function registerRoutes(
           userId: req.session.userId,
           userEmail: req.session.userEmail,
           details: {
-            batch_number: batchNumber,
+            book_number: bookNumber,
             total_imported: results.success,
             total_failed: results.failed,
           },
@@ -707,6 +732,60 @@ export async function registerRoutes(
     }
   });
 
+  // Account redemptions
+  app.get("/api/accounts/:id/redemptions", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const redemptions = await storage.getAccountRedemptions(req.params.id);
+      return res.json(redemptions);
+    } catch (error) {
+      console.error("Error fetching account redemptions:", error);
+      return res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  app.post("/api/accounts/:id/redemptions", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const { amountRands, notes } = req.body;
+      if (!amountRands || amountRands <= 0) {
+        return res.status(400).json({ error: "Amount in Rands is required and must be positive" });
+      }
+      
+      if (amountRands % 50 !== 0) {
+        return res.status(400).json({ error: "Amount must be a multiple of R50 (e.g., R50, R100, R150)" });
+      }
+      
+      const amountCents = Math.round(amountRands * 100);
+      
+      // Get user email for tracking
+      const user = await storage.getUser(req.session.userId!);
+      
+      const redemption = await storage.createAccountRedemption({
+        accountId: req.params.id,
+        amountCents,
+        redemptionDate: new Date(),
+        notes: notes?.trim() || null,
+        createdBy: req.session.userId,
+        createdByEmail: user?.email || null,
+      });
+      
+      return res.status(201).json(redemption);
+    } catch (error) {
+      console.error("Error creating account redemption:", error);
+      return res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  // Get all unique book numbers for filtering
+  app.get("/api/vouchers/books", requireAuth, async (_req: Request, res: Response) => {
+    try {
+      const bookNumbers = await storage.getUniqueBookNumbers();
+      return res.json(bookNumbers);
+    } catch (error) {
+      console.error("Error fetching book numbers:", error);
+      return res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
   // Export routes (admin only)
   app.get("/api/exports/vouchers", requireAdmin, async (req: Request, res: Response) => {
     try {
@@ -778,8 +857,15 @@ export async function registerRoutes(
   app.get("/api/exports/all", requireAdmin, async (req: Request, res: Response) => {
     try {
       const dateStr = new Date().toISOString().split('T')[0];
+      const bookNumber = req.query.bookNumber as string | undefined;
       
-      const vouchers = await storage.getAllVouchersForExport();
+      let vouchers = await storage.getAllVouchersForExport();
+      
+      // Filter by book number if specified
+      if (bookNumber && bookNumber !== 'all') {
+        vouchers = vouchers.filter(v => v.bookNumber === bookNumber || v.batchNumber === bookNumber);
+      }
+      
       const summaries = await storage.getAllAccountSummaries();
       const purchases = await storage.getAllAccountPurchasesForExport();
       const accounts = await storage.getAllAccounts();

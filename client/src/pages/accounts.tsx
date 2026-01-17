@@ -36,9 +36,9 @@ import {
 } from '@/components/ui/table';
 import { useToast } from '@/hooks/use-toast';
 import { apiRequest } from '@/lib/queryClient';
-import { Wallet, Plus, User, Mail, Phone, FileText, Loader2, DollarSign, TrendingUp, History } from 'lucide-react';
+import { Wallet, Plus, User, Mail, Phone, FileText, Loader2, DollarSign, TrendingUp, History, MinusCircle } from 'lucide-react';
 import { format } from 'date-fns';
-import type { AccountSummary, AccountPurchase } from '@shared/schema';
+import type { AccountSummary, AccountPurchase, AccountRedemption } from '@shared/schema';
 
 const accountFormSchema = z.object({
   name: z.string().min(1, 'Account name is required'),
@@ -59,9 +59,19 @@ const purchaseFormSchema = z.object({
 
 type PurchaseFormData = z.infer<typeof purchaseFormSchema>;
 
+const redemptionFormSchema = z.object({
+  amountRands: z.coerce.number()
+    .min(50, 'Minimum redemption is R50')
+    .refine((val) => val % 50 === 0, 'Amount must be a multiple of R50 (e.g., R50, R100, R150)'),
+  notes: z.string().optional(),
+});
+
+type RedemptionFormData = z.infer<typeof redemptionFormSchema>;
+
 export default function AccountsPage() {
   const [isAccountDialogOpen, setIsAccountDialogOpen] = useState(false);
   const [isPurchaseDialogOpen, setIsPurchaseDialogOpen] = useState(false);
+  const [isRedemptionDialogOpen, setIsRedemptionDialogOpen] = useState(false);
   const [isHistoryDialogOpen, setIsHistoryDialogOpen] = useState(false);
   const [selectedAccountId, setSelectedAccountId] = useState<string | null>(null);
   const { toast } = useToast();
@@ -86,12 +96,25 @@ export default function AccountsPage() {
     },
   });
 
+  const redemptionForm = useForm<RedemptionFormData>({
+    resolver: zodResolver(redemptionFormSchema),
+    defaultValues: {
+      amountRands: 100,
+      notes: '',
+    },
+  });
+
   const { data: accounts, isLoading } = useQuery<AccountSummary[]>({
     queryKey: ['/api/accounts/summaries'],
   });
 
   const { data: purchases, isLoading: purchasesLoading } = useQuery<AccountPurchase[]>({
     queryKey: ['/api/accounts', selectedAccountId, 'purchases'],
+    enabled: !!selectedAccountId && isHistoryDialogOpen,
+  });
+
+  const { data: redemptions, isLoading: redemptionsLoading } = useQuery<AccountRedemption[]>({
+    queryKey: ['/api/accounts', selectedAccountId, 'redemptions'],
     enabled: !!selectedAccountId && isHistoryDialogOpen,
   });
 
@@ -144,12 +167,41 @@ export default function AccountsPage() {
     },
   });
 
+  const createRedemptionMutation = useMutation({
+    mutationFn: async (data: RedemptionFormData) => {
+      const response = await apiRequest('POST', `/api/accounts/${selectedAccountId}/redemptions`, data);
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/accounts'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/accounts/summaries'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/accounts', selectedAccountId, 'redemptions'] });
+      setIsRedemptionDialogOpen(false);
+      redemptionForm.reset();
+      toast({
+        title: 'Redemption recorded',
+        description: 'The fund redemption has been recorded successfully.',
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        variant: 'destructive',
+        title: 'Failed to record redemption',
+        description: error.message,
+      });
+    },
+  });
+
   const onSubmitAccount = (data: AccountFormData) => {
     createAccountMutation.mutate(data);
   };
 
   const onSubmitPurchase = (data: PurchaseFormData) => {
     createPurchaseMutation.mutate(data);
+  };
+
+  const onSubmitRedemption = (data: RedemptionFormData) => {
+    createRedemptionMutation.mutate(data);
   };
 
   const formatCurrency = (value: number) => {
@@ -165,6 +217,12 @@ export default function AccountsPage() {
   const openHistoryDialog = (accountId: string) => {
     setSelectedAccountId(accountId);
     setIsHistoryDialogOpen(true);
+  };
+
+  const openRedemptionDialog = (accountId: string) => {
+    setSelectedAccountId(accountId);
+    redemptionForm.reset({ amountRands: 100, notes: '' });
+    setIsRedemptionDialogOpen(true);
   };
 
   const handleAccountDialogChange = (open: boolean) => {
@@ -335,14 +393,14 @@ export default function AccountsPage() {
 
         <Card data-testid="card-total-purchased">
           <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Purchased</CardTitle>
+            <CardTitle className="text-sm font-medium">Total Received</CardTitle>
             <DollarSign className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold" data-testid="text-total-purchased">
               {isLoading ? <Skeleton className="h-8 w-24" /> : formatCurrency(totalStats.totalPurchased)}
             </div>
-            <p className="text-xs text-muted-foreground">All account purchases</p>
+            <p className="text-xs text-muted-foreground">All account receipts</p>
           </CardContent>
         </Card>
 
@@ -400,7 +458,7 @@ export default function AccountsPage() {
                 <TableRow>
                   <TableHead>Account Name</TableHead>
                   <TableHead>Contact</TableHead>
-                  <TableHead className="text-right">Purchased</TableHead>
+                  <TableHead className="text-right">Received</TableHead>
                   <TableHead className="text-right">Redeemed</TableHead>
                   <TableHead className="text-right">Balance</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
@@ -466,6 +524,15 @@ export default function AccountsPage() {
                           data-testid={`button-history-${account.id}`}
                         >
                           <History className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => openRedemptionDialog(account.id)}
+                          data-testid={`button-redeem-${account.id}`}
+                        >
+                          <MinusCircle className="h-4 w-4" />
+                          Redeem
                         </Button>
                         <Button
                           size="sm"
@@ -555,55 +622,180 @@ export default function AccountsPage() {
         </DialogContent>
       </Dialog>
 
-      {/* History Dialog */}
-      <Dialog open={isHistoryDialogOpen} onOpenChange={setIsHistoryDialogOpen}>
-        <DialogContent className="max-w-2xl">
+      {/* Redemption Dialog */}
+      <Dialog open={isRedemptionDialogOpen} onOpenChange={setIsRedemptionDialogOpen}>
+        <DialogContent>
           <DialogHeader>
-            <DialogTitle>Purchase History</DialogTitle>
+            <DialogTitle>Record Manual Redemption</DialogTitle>
             <DialogDescription>
-              Purchase history for {selectedAccount?.name}
+              Record a fund redemption for {selectedAccount?.name}
             </DialogDescription>
           </DialogHeader>
-          {purchasesLoading ? (
-            <div className="space-y-3">
-              {Array.from({ length: 3 }).map((_, i) => (
-                <Skeleton key={i} className="h-12 w-full" />
-              ))}
+          <Form {...redemptionForm}>
+            <form onSubmit={redemptionForm.handleSubmit(onSubmitRedemption)} className="space-y-4">
+              <FormField
+                control={redemptionForm.control}
+                name="amountRands"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Amount (Rands) *</FormLabel>
+                    <FormControl>
+                      <Input
+                        type="number"
+                        min={50}
+                        step={50}
+                        placeholder="e.g., 100"
+                        data-testid="input-redemption-amount"
+                        {...field}
+                      />
+                    </FormControl>
+                    <p className="text-xs text-muted-foreground">
+                      This will reduce the account balance by {formatCurrency(field.value || 0)}
+                    </p>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={redemptionForm.control}
+                name="notes"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Notes (optional)</FormLabel>
+                    <FormControl>
+                      <Textarea
+                        placeholder="e.g., Cash payout, refund, etc."
+                        data-testid="input-redemption-notes"
+                        {...field}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <DialogFooter>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setIsRedemptionDialogOpen(false)}
+                  data-testid="button-cancel-redemption"
+                >
+                  Cancel
+                </Button>
+                <Button type="submit" disabled={createRedemptionMutation.isPending} data-testid="button-save-redemption">
+                  {createRedemptionMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                  Record Redemption
+                </Button>
+              </DialogFooter>
+            </form>
+          </Form>
+        </DialogContent>
+      </Dialog>
+
+      {/* History Dialog */}
+      <Dialog open={isHistoryDialogOpen} onOpenChange={setIsHistoryDialogOpen}>
+        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Account History</DialogTitle>
+            <DialogDescription>
+              Transaction history for {selectedAccount?.name}
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-6">
+            <div>
+              <h3 className="font-medium mb-2 flex items-center gap-2">
+                <Plus className="h-4 w-4 text-primary" /> Purchases (Received)
+              </h3>
+              {purchasesLoading ? (
+                <div className="space-y-3">
+                  {Array.from({ length: 3 }).map((_, i) => (
+                    <Skeleton key={i} className="h-12 w-full" />
+                  ))}
+                </div>
+              ) : purchases?.length === 0 ? (
+                <div className="py-4 text-center text-muted-foreground text-sm" data-testid="text-no-purchases">
+                  No purchases recorded yet.
+                </div>
+              ) : (
+                <Table data-testid="table-purchases">
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Date</TableHead>
+                      <TableHead className="text-right">Amount</TableHead>
+                      <TableHead className="text-right">Vouchers</TableHead>
+                      <TableHead>Notes</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {purchases?.map((purchase) => (
+                      <TableRow key={purchase.id} data-testid={`row-purchase-${purchase.id}`}>
+                        <TableCell data-testid={`text-purchase-date-${purchase.id}`}>
+                          {format(new Date(purchase.purchaseDate), 'dd MMM yyyy')}
+                        </TableCell>
+                        <TableCell className="text-right font-medium text-primary" data-testid={`text-purchase-amount-${purchase.id}`}>
+                          +{formatCurrency(purchase.amountCents / 100)}
+                        </TableCell>
+                        <TableCell className="text-right" data-testid={`text-purchase-vouchers-${purchase.id}`}>
+                          {purchase.voucherCount}
+                        </TableCell>
+                        <TableCell className="text-muted-foreground" data-testid={`text-purchase-notes-${purchase.id}`}>
+                          {purchase.notes || '-'}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              )}
             </div>
-          ) : purchases?.length === 0 ? (
-            <div className="py-8 text-center text-muted-foreground" data-testid="text-no-purchases">
-              No purchases recorded yet.
+
+            <div>
+              <h3 className="font-medium mb-2 flex items-center gap-2">
+                <MinusCircle className="h-4 w-4 text-destructive" /> Manual Redemptions
+              </h3>
+              {redemptionsLoading ? (
+                <div className="space-y-3">
+                  {Array.from({ length: 3 }).map((_, i) => (
+                    <Skeleton key={i} className="h-12 w-full" />
+                  ))}
+                </div>
+              ) : redemptions?.length === 0 ? (
+                <div className="py-4 text-center text-muted-foreground text-sm" data-testid="text-no-redemptions">
+                  No manual redemptions recorded yet.
+                </div>
+              ) : (
+                <Table data-testid="table-redemptions">
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Date</TableHead>
+                      <TableHead className="text-right">Amount</TableHead>
+                      <TableHead>Recorded By</TableHead>
+                      <TableHead>Notes</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {redemptions?.map((redemption) => (
+                      <TableRow key={redemption.id} data-testid={`row-redemption-${redemption.id}`}>
+                        <TableCell data-testid={`text-redemption-date-${redemption.id}`}>
+                          {format(new Date(redemption.redemptionDate), 'dd MMM yyyy HH:mm')}
+                        </TableCell>
+                        <TableCell className="text-right font-medium text-destructive" data-testid={`text-redemption-amount-${redemption.id}`}>
+                          -{formatCurrency(redemption.amountCents / 100)}
+                        </TableCell>
+                        <TableCell className="text-muted-foreground" data-testid={`text-redemption-user-${redemption.id}`}>
+                          {redemption.createdByEmail || '-'}
+                        </TableCell>
+                        <TableCell className="text-muted-foreground" data-testid={`text-redemption-notes-${redemption.id}`}>
+                          {redemption.notes || '-'}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              )}
             </div>
-          ) : (
-            <Table data-testid="table-purchases">
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Date</TableHead>
-                  <TableHead className="text-right">Amount</TableHead>
-                  <TableHead className="text-right">Vouchers</TableHead>
-                  <TableHead>Notes</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {purchases?.map((purchase) => (
-                  <TableRow key={purchase.id} data-testid={`row-purchase-${purchase.id}`}>
-                    <TableCell data-testid={`text-purchase-date-${purchase.id}`}>
-                      {format(new Date(purchase.purchaseDate), 'dd MMM yyyy')}
-                    </TableCell>
-                    <TableCell className="text-right font-medium" data-testid={`text-purchase-amount-${purchase.id}`}>
-                      {formatCurrency(purchase.amountCents / 100)}
-                    </TableCell>
-                    <TableCell className="text-right" data-testid={`text-purchase-vouchers-${purchase.id}`}>
-                      {purchase.voucherCount}
-                    </TableCell>
-                    <TableCell className="text-muted-foreground" data-testid={`text-purchase-notes-${purchase.id}`}>
-                      {purchase.notes || '-'}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          )}
+          </div>
+          
           <DialogFooter>
             <Button
               variant="outline"
